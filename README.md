@@ -8,7 +8,7 @@ An efficient, scalable, continuous crawler leveraging Go/Cassandra
 # Overview
 
 Walker is a web crawler on it's feet. It has been built from the ground up to be horizontally scalable, smart about recrawling, lean on storage, flexible about what to do with data, and easy to set up. Use it if you:
-- Want a broad crawl of the web
+- Want a broad or scalable focused crawl of the web
 - Want to prioritize what you (re)crawl, and how often
 - Want control over where you store crawled data and what you use it for (walker stores links and metadat internally, passing pages and files on to you)
 - Want a smart crawler that will avoid junk (ex. crawler traps)
