@@ -30,26 +30,26 @@ The *dispatcher* runs batch jobs looking for domains that don't yet have segment
 
 Make sure you have [go installed and a GOPATH set](https://golang.org/doc/install)
 
-  $ go get github.com/iParadigms/walker
+    $ go get github.com/iParadigms/walker
 
 Install and start Cassandra. Simple install on Centos 6 demonstrated below. See the [datastax documentation](http://www.datastax.com/documentation/cassandra/2.0/cassandra/install/install_cassandraTOC.html) non-RHEL-based installs and recommended settings (Oracle Java is recommended but not required)
 
-  echo "[datastax]
-  name = DataStax Repo for Apache Cassandra
-  baseurl = http://rpm.datastax.com/community
-  enabled = 1
-  gpgcheck = 0" | sudo tee /etc/yum.repos.d/datastax.repo
+    echo "[datastax]
+    name = DataStax Repo for Apache Cassandra
+    baseurl = http://rpm.datastax.com/community
+    enabled = 1
+    gpgcheck = 0" | sudo tee /etc/yum.repos.d/datastax.repo
 
-  sudo yum install java-1.7.0-openjdk dsc20
+    sudo yum install java-1.7.0-openjdk dsc20
 
-  sudo service cassandra start
+    sudo service cassandra start
 
 ## Basic crawl
 
 TODO: envision the CLI usage, for example:
 
-  # Crawl a specific site with default refresh intervals
-  $GOPATH/bin/walker -domain=_<somedomain.com>_
+    # Crawl a specific site with default refresh intervals
+    $GOPATH/bin/walker -domain=<somedomain.com>
 
 ## Advanced features and configuration
 
