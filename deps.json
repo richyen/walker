@@ -1,0 +1,7 @@
+{
+    "cobra": {
+        "repo": "github.com/spf13/cobra",
+        "version": "",
+        "type": "git"
+    }
+}
