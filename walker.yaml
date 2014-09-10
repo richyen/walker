@@ -1,0 +1,27 @@
+# The Walker Configuration File
+#
+# Walker was made to run with sensible default values, so most configuration
+# keys are documented her ebut commented out. The values set here are the
+# defaults.
+
+# Whether to dynamically add new-found domains (or their links) to the crawl (a
+# broad crawl) or discard them, assuming desired domains are manually seeded.
+#add_new_domains: false
+
+# Configure the User-Agent header
+#user_agent: Walker (http://github.com/iParadigms/walker)
+
+# Crawl delay (in seconds) to use when unspecified by robots.txt
+#default_crawl_delay: 1
+
+# Maximum size of http content
+#max_http_content_size_bytes
+
+# For the purpose of parsing out links for crawling, walker looks at the
+# following tags:
+#   - a, area, form, frame, iframe, script, link, img
+# It ignores several by default.
+#ignore_tags: [script, img, link]
+
+# The maximum number of links to parse from a page for further crawling.
+#max_links_per_page
