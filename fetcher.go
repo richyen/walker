@@ -68,8 +68,8 @@ func (f *fetcher) start() {
 
 		f.host = f.manager.ds.ClaimNewHost()
 		f.fetchRobots(f.host)
-		f.crawldelay = time.Second * time.Duration(Config.DefaultCrawlDelay)
-		if f.robots != nil {
+		f.crawldelay = time.Duration(Config.DefaultCrawlDelay) * time.Second
+		if f.robots != nil && int(f.robots.CrawlDelay) > Config.DefaultCrawlDelay {
 			f.crawldelay = f.robots.CrawlDelay
 		}
 		log4go.Debug("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
@@ -84,6 +84,8 @@ func (f *fetcher) start() {
 				continue
 			}
 
+			time.Sleep(f.crawldelay)
+
 			fr.FetchTime = time.Now()
 			fr.Res, fr.FetchError = f.fetch(link)
 			if fr.FetchError != nil {
@@ -92,7 +94,7 @@ func (f *fetcher) start() {
 				continue
 			}
 
-			log4go.Debug("Fetched %v, response: %v", link, fr.Res)
+			log4go.Debug("Fetched %v -- %v", link, fr.Res.Status)
 			f.manager.ds.StoreURLFetchResults(fr)
 			for _, h := range f.manager.handlers {
 				h.HandleResponse(fr)

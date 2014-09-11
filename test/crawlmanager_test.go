@@ -22,7 +22,6 @@ func TestBasicRun(t *testing.T) {
 	ds.On("LinksForHost", "robotsdelay2.com").Return([]*url.URL{
 		parse("http://robotsdelay2.com/page4.html"),
 		parse("http://robotsdelay2.com/page5.html"),
-		parse("http://robotsdelay2.com/page6.html"),
 	})
 
 	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
@@ -62,7 +61,7 @@ func TestBasicRun(t *testing.T) {
 	manager.AddHandler(h)
 	manager.Transport = GetFakeTransport()
 	go manager.Start()
-	time.Sleep(time.Millisecond * 4)
+	time.Sleep(time.Second * 4)
 	manager.Stop()
 	rs.Stop()
 
