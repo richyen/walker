@@ -6,3 +6,4 @@
 default_crawl_delay: 0
 cassandra:
     keyspace: "walker_test"
+    replication_factor: 1

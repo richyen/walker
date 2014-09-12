@@ -32,6 +32,9 @@
 #
 # keyspace shouldn't generally need to be changed; it is mainly changed in
 # testing as an extra layer of safety.
+#
+# replication_factor is used when defining the keyspace.
 #cassandra:
 #    hosts: ["localhost"]
 #    keyspace: "walker"
+#    replication_factor: 3

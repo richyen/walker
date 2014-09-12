@@ -45,8 +45,9 @@ type WalkerConfig struct {
 	// max simultaneous fetches/crawls/segments
 
 	Cassandra struct {
-		Hosts    []string `yaml:"hosts"`
-		Keyspace string   `yaml:"keyspace"`
+		Hosts             []string `yaml:"hosts"`
+		Keyspace          string   `yaml:"keyspace"`
+		ReplicationFactor int      `yaml:"replication_factor"`
 
 		//TODO: Currently only exposing values needed for testing; should expose more?
 		//CQLVersion       string
@@ -77,6 +78,7 @@ func SetDefaultConfig() {
 	Config.IgnoreTags = []string{"script", "img", "link"}
 	Config.Cassandra.Hosts = []string{"localhost"}
 	Config.Cassandra.Keyspace = "walker"
+	Config.Cassandra.ReplicationFactor = 3
 }
 
 // ReadConfigFile sets a new path to find the walker yaml config file and

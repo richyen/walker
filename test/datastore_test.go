@@ -15,15 +15,17 @@ var initdb sync.Once
 // getDB ensures a walker database is set up and empty, returning a db session
 func getDB(t *testing.T) (*gocql.Session, *gocql.ClusterConfig) {
 	initdb.Do(func() {
-		//TODO: load the schema
+		err := walker.CreateCassandraSchema()
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
 	})
 
 	if walker.Config.Cassandra.Keyspace != "walker_test" {
 		t.Fatal("Running tests requires using the walker_test keyspace")
 		return nil, nil
 	}
-	config := gocql.NewCluster(walker.Config.Cassandra.Hosts[0])
-	config.Keyspace = walker.Config.Cassandra.Keyspace
+	config := walker.GetCassandraConfig()
 	db, err := config.CreateSession()
 	if err != nil {
 		t.Fatalf("Could not connect to local cassandra db: %v", err)

@@ -1,9 +1,11 @@
 package walker
 
 import (
+	"bytes"
 	"fmt"
 	"net/url"
 	"strings"
+	"text/template"
 	"time"
 
 	"code.google.com/p/go.net/publicsuffix"
@@ -47,10 +49,18 @@ type Datastore interface {
 	StoreParsedURL(u *url.URL, fr *FetchResults)
 }
 
+// CassandraDatastore is the primary Datastore implementation, using Apache
+// Cassandra as a highly scalable backend.
 type CassandraDatastore struct {
 	cf            *gocql.ClusterConfig
 	db            *gocql.Session
 	cachedDomains []string
+}
+
+func GetCassandraConfig() *gocql.ClusterConfig {
+	config := gocql.NewCluster(Config.Cassandra.Hosts[0])
+	config.Keyspace = Config.Cassandra.Keyspace
+	return config
 }
 
 func NewCassandraDatastore(cf *gocql.ClusterConfig) (*CassandraDatastore, error) {
@@ -246,3 +256,96 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 	}
 	return
 }
+
+// createCassandraSchema creates the walker schema in the configured Cassandra
+// database. It requires that the keyspace not already exist (so as to losing
+// non-test data), with the exception of the walker_test schema, which it will
+// drop automatically.
+func CreateCassandraSchema() error {
+	config := GetCassandraConfig()
+	config.Keyspace = ""
+	db, err := config.CreateSession()
+	if err != nil {
+		return fmt.Errorf("Could not connect to create cassandra schema: %v", err)
+	}
+
+	if Config.Cassandra.Keyspace == "walker_test" {
+		err := db.Query("DROP KEYSPACE IF EXISTS walker_test").Exec()
+		if err != nil {
+			return fmt.Errorf("Failed to drop walker_test keyspace: %v", err)
+		}
+	}
+
+	t, err := template.New("schema").Parse(schemaTemplate)
+	if err != nil {
+		return fmt.Errorf("Failure parsing the CQL schema template: %v", err)
+	}
+	var b bytes.Buffer
+	t.Execute(&b, Config.Cassandra)
+
+	for _, q := range strings.Split(b.String(), ";") {
+		err = db.Query(q).Exec()
+		if err != nil {
+			return fmt.Errorf("Failed to create schema: %v\nStatement:\n%v", err, q)
+		}
+	}
+	return nil
+}
+
+const schemaTemplate string = `-- The schema file for walker
+--
+-- This file gets generated from a Go template so the keyspace and replication
+-- can be configured (particularly for testing purposes)
+CREATE KEYSPACE {{.Keyspace}}
+WITH REPLICATION = { 'class': 'NetworkTopologyStrategy', 'DC1': {{.ReplicationFactor}} };
+
+CREATE TABLE {{.Keyspace}}.links (
+  domain text, -- "google.com"
+  subdomain text, --  "www" (does not include .)
+  path text, -- "/index.hml"
+  protocol text, -- "http"
+  crawl_time timestamp, -- 0/epoch indicates initial insert (not yet fetched)
+  --port int,
+
+  status int,
+  error text,
+  fp bigint,
+  referer text,
+  redirect_url text,
+  ip text,
+  mime text,
+  encoding text,
+  robots_excluded boolean,
+  PRIMARY KEY (domain, subdomain, path, protocol, crawl_time)
+) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
+
+CREATE TABLE {{.Keyspace}}.segments (
+  domain text,
+  subdomain text,
+  path text,
+  protocol text,
+  --port int,
+
+  crawl_time timestamp,
+  PRIMARY KEY (domain, subdomain, path, protocol)
+) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
+
+CREATE TABLE {{.Keyspace}}.domain_info (
+  domain text,
+  excluded boolean,
+  exclude_reason text,
+  mirror_for text,
+  PRIMARY KEY (domain)
+) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
+
+CREATE TABLE {{.Keyspace}}.domains_to_crawl (
+  priority int,
+  domain text,
+  crawler_token uuid,
+  claim_time timestamp,
+  PRIMARY KEY (priority, domain)
+) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
+CREATE INDEX domains_to_crawl_crawler_token
+  ON {{.Keyspace}}.domains_to_crawl (crawler_token);
+CREATE INDEX domains_to_crawl_domain
+  ON {{.Keyspace}}.domains_to_crawl (domain)`
