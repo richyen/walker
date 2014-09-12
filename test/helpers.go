@@ -1,7 +1,6 @@
 package test
 
 import (
-	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -11,6 +10,21 @@ import (
 
 	"github.com/iParadigms/walker"
 )
+
+func init() {
+	loadTestConfig("test-walker.yaml")
+}
+
+// loadTestConfig loads the given test config yaml file. The given path is
+// assumed to be relative to the `walker/test/` directory, the location of this
+// test file.
+func loadTestConfig(filename string) {
+	_, thisname, _, ok := runtime.Caller(0)
+	if !ok {
+		panic("Failed to get location of test source file")
+	}
+	walker.ReadConfigFile(path.Join(path.Dir(thisname), filename))
+}
 
 // FakeDial makes connections to localhost, no matter what addr was given.
 func FakeDial(network, addr string) (net.Conn, error) {
@@ -32,25 +46,4 @@ func GetFakeTransport() http.RoundTripper {
 func parse(link string) *url.URL {
 	u, _ := url.Parse(link)
 	return u
-}
-
-// loadTestConfig loads the given test config yaml file. The given path is
-// assumed to be relative to the `walker/test/` directory, the location of this
-// test file.
-func loadTestConfig(filename string) {
-	_, thisname, _, ok := runtime.Caller(0)
-	if !ok {
-		panic("Failed to get location of test source file")
-	}
-	walker.ReadConfigFile(path.Join(path.Dir(thisname), filename))
-}
-
-// NoopCloser is a reader with a Close() method that does nothing (so it
-// implements io.ReadCloser). Used for mocking remote server responses.
-type NoopCloser struct {
-	io.Reader
-}
-
-func (NoopCloser) Close() error {
-	return nil
 }

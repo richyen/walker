@@ -2,6 +2,7 @@ package walker
 
 import (
 	"io/ioutil"
+	"strings"
 
 	"code.google.com/p/log4go"
 
@@ -42,6 +43,28 @@ type WalkerConfig struct {
 	// regex matchers for hosts, paths, etc. to include or exclude
 	// max crawl delay (exclude or notify of sites that try to set a massive crawl delay)
 	// max simultaneous fetches/crawls/segments
+
+	Cassandra struct {
+		Hosts    []string `yaml:"hosts"`
+		Keyspace string   `yaml:"keyspace"`
+
+		//TODO: Currently only exposing values needed for testing; should expose more?
+		//CQLVersion       string
+		//ProtoVersion     int
+		//Timeout          time.Duration
+		//Port             int
+		//NumConns         int
+		//NumStreams       int
+		//Consistency      Consistency
+		//Compressor       Compressor
+		//Authenticator    Authenticator
+		//RetryPolicy      RetryPolicy
+		//SocketKeepalive  time.Duration
+		//ConnPoolType     NewPoolFunc
+		//DiscoverHosts    bool
+		//MaxPreparedStmts int
+		//Discovery        DiscoveryConfig
+	} `yaml:"cassandra"`
 }
 
 // SetDefaultConfig resets the Config object to default values, regardless of
@@ -52,6 +75,8 @@ func SetDefaultConfig() {
 	Config.DefaultCrawlDelay = 1
 	Config.MaxHTTPContentSizeBytes = 20 * 1024 * 1024 // 20MB
 	Config.IgnoreTags = []string{"script", "img", "link"}
+	Config.Cassandra.Hosts = []string{"localhost"}
+	Config.Cassandra.Keyspace = "walker"
 }
 
 // ReadConfigFile sets a new path to find the walker yaml config file and
@@ -66,7 +91,11 @@ func readConfig() {
 
 	data, err := ioutil.ReadFile(ConfigName)
 	if err != nil {
-		log4go.Error("Failed to read config file (%v): %v", ConfigName, err)
+		if strings.Contains(err.Error(), "no such file or directory") {
+			log4go.Info("Did not find config file %v, continuing with defaults", ConfigName)
+		} else {
+			log4go.Error("Failed to read config file (%v): %v", ConfigName, err)
+		}
 		return
 	}
 	err = yaml.Unmarshal(data, &Config)
@@ -74,4 +103,5 @@ func readConfig() {
 		log4go.Error("Failed to unmarshal yaml from config file (%v): %v", ConfigName, err)
 		return
 	}
+	log4go.Info("Loaded config file %v", ConfigName)
 }

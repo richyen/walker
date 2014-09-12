@@ -1,7 +1,7 @@
 # The Walker Configuration File
 #
 # Walker was made to run with sensible default values, so most configuration
-# keys are documented her ebut commented out. The values set here are the
+# keys are documented here but commented out. The values set here are the
 # defaults.
 
 # Whether to dynamically add new-found domains (or their links) to the crawl (a
@@ -25,3 +25,13 @@
 
 # The maximum number of links to parse from a page for further crawling.
 #max_links_per_page
+
+# Cassandra configuration for the datastore.
+# Generally these are used to create a gocql.ClusterConfig object
+# (https://godoc.org/github.com/gocql/gocql#ClusterConfig).
+#
+# keyspace shouldn't generally need to be changed; it is mainly changed in
+# testing as an extra layer of safety.
+#cassandra:
+#    hosts: ["localhost"]
+#    keyspace: "walker"

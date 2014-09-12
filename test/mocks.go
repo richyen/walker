@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"strings"
 
 	"github.com/iParadigms/walker"
 	"github.com/stretchr/testify/mock"
@@ -27,6 +26,10 @@ func (ds *MockDatastore) StoreURLFetchResults(res *walker.FetchResults) {
 func (ds *MockDatastore) ClaimNewHost() string {
 	args := ds.Mock.Called()
 	return args.String(0)
+}
+
+func (ds *MockDatastore) UnclaimHost(host string) {
+	ds.Mock.Called(host)
 }
 
 func (ds *MockDatastore) LinksForHost(domain string) <-chan *url.URL {
@@ -126,34 +129,14 @@ func (s *MockHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if res.Status == 0 {
 		res.Status = 200
 	}
-	if res.Method == "" {
-		res.Method = "GET"
-	}
 	if res.ContentType == "" {
 		res.ContentType = "text/html"
 	}
 
-	body := strings.NewReader(res.Body)
-	httpRes := &http.Response{
-		Request: &http.Request{
-			Method: res.Method,
-		},
-		StatusCode:    res.Status,
-		ProtoMajor:    1,
-		ProtoMinor:    1,
-		Body:          NoopCloser{body},
-		ContentLength: int64(body.Len()),
-
-		// Values also considered by Response.Write:
-		//Trailer
-		//TransferEncoding
-		//Header -- this seems false, it does not actually do anything with
-		//			Header, we need to write it ourselves to the ResponseWriter (don't
-		//			know why)
-	}
 	w.Header().Set("Content-Type", res.ContentType)
+	w.WriteHeader(res.Status)
 
-	err := httpRes.Write(w)
+	_, err := w.Write([]byte(res.Body))
 	if err != nil {
 		panic(fmt.Sprintf("Failed to write response for page %v, err: %v", r.URL, err))
 	}

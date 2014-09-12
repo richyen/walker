@@ -3,7 +3,7 @@ package walker
 import (
 	"bytes"
 	"fmt"
-	"io"
+	"io/ioutil"
 	"strings"
 
 	"github.com/temoto/robotstxt.go"
@@ -23,8 +23,15 @@ type FetchResults struct {
 	// Url that was fetched; will always be populated
 	Url *url.URL
 
-	// Response object; nil if there was a FetchError
+	// Response object; nil if there was a FetchError or ExcludedByRobots is
+	// true. Response.Body will be read and closed internally by walker; to get
+	// the content use `FetchResults.Contents`
 	Res *http.Response
+
+	// Contents is Response.Body read into a []byte. This should be used by
+	// Handlers etc. instead of Response.Body, which walker will read and close
+	// internally.
+	Contents []byte
 
 	// FetchError if the net/http request had an error (non-2XX HTTP response
 	// codes are not considered errors)
@@ -94,6 +101,14 @@ func (f *fetcher) start() {
 				continue
 			}
 
+			//TODO: limit to reading Config.MaxHTTPContentSizeBytes
+			fr.Contents, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
+			if fr.FetchError != nil {
+				log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
+				f.manager.ds.StoreURLFetchResults(fr)
+				continue
+			}
+
 			log4go.Debug("Fetched %v -- %v", link, fr.Res.Status)
 			f.manager.ds.StoreURLFetchResults(fr)
 			for _, h := range f.manager.handlers {
@@ -101,9 +116,9 @@ func (f *fetcher) start() {
 			}
 
 			//TODO: check for other types based on config
-			if isHTML(fr.Res) {
+			if isHTML(fr) {
 				log4go.Debug("Parsing as HTML")
-				outlinks, err := getLinks(fr.Res)
+				outlinks, err := getLinks(fr.Contents)
 				if err != nil {
 					log4go.Warn("error parsing HTML for page %v: %v", link, err)
 					continue
@@ -163,9 +178,8 @@ func (f *fetcher) fetch(u *url.URL) (*http.Response, error) {
 }
 
 // getLinks parses the response for links, doing it's best with bad HTML
-func getLinks(res *http.Response) ([]*url.URL, error) {
-	limitedReader := io.LimitReader(res.Body, Config.MaxHTTPContentSizeBytes)
-	utf8Reader, err := charset.NewReader(limitedReader, "text/html")
+func getLinks(contents []byte) ([]*url.URL, error) {
+	utf8Reader, err := charset.NewReader(bytes.NewReader(contents), "text/html")
 	if err != nil {
 		return nil, err
 	}
@@ -233,8 +247,8 @@ func parseAnchorAttrs(tokenizer *html.Tokenizer, links []*url.URL) []*url.URL {
 	}
 }
 
-func isHTML(res *http.Response) bool {
-	for _, contenttype := range res.Header["Content-Type"] {
+func isHTML(fr *FetchResults) bool {
+	for _, contenttype := range fr.Res.Header["Content-Type"] {
 		if strings.HasPrefix(contenttype, "text/html") {
 			return true
 		}
