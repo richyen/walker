@@ -1,0 +1,8 @@
+# The Walker Configuration File
+#
+# This one is the defaults for test execution; see walker.yaml in the main
+# package for comments and descriptions
+
+default_crawl_delay: 0
+cassandra:
+    keyspace: "walker_test"

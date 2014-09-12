@@ -125,6 +125,24 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 }
 
 func (ds *CassandraDatastore) UnclaimHost(host string) {
+	err := ds.db.Query(`DELETE FROM segments WHERE domain = ?`, host).Exec()
+	if err != nil {
+		log4go.Error("Failed deleting segment links for %v: %v", host, err)
+	}
+
+	// Since (priority, domain) is the primary key we need to select the priority
+	// first in order to delete. https://issues.apache.org/jira/browse/CASSANDRA-5527
+	var priority int
+	err = ds.db.Query(`SELECT priority FROM domains_to_crawl WHERE domain = ?`, host).Scan(&priority)
+	if err != nil {
+		log4go.Error("Failed getting priority for %v: %v", host, err)
+		return
+	}
+	err = ds.db.Query(`DELETE FROM domains_to_crawl WHERE priority = ? AND domain = ?`,
+		priority, host).Exec()
+	if err != nil {
+		log4go.Error("Failed deleting %v from domains_to_crawl: %v", host, err)
+	}
 }
 
 func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *url.URL {
@@ -134,11 +152,6 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *url.URL {
 		return nil
 	}
 	log4go.Info("Returning %v links to crawl domain %v", len(links), domain)
-
-	err = ds.deleteClaimedSegment(domain)
-	if err != nil {
-		log4go.Error("Failed to delete claimed segment for %v: %v", domain, err)
-	}
 
 	linkchan := make(chan *url.URL, len(links))
 	for _, l := range links {
@@ -232,25 +245,4 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 		}
 	}
 	return
-}
-
-func (ds *CassandraDatastore) deleteClaimedSegment(domain string) error {
-	err := ds.db.Query(`DELETE FROM segments WHERE domain = ?`, domain).Exec()
-	if err != nil {
-		return fmt.Errorf("Failed deleting segment links for %v: %v", domain, err)
-	}
-
-	// Since (priority, domain) is the primary key we need to select the priority
-	// first in order to delete. https://issues.apache.org/jira/browse/CASSANDRA-5527
-	var priority int
-	err = ds.db.Query(`SELECT priority FROM domains_to_crawl WHERE domain = ?`, domain).Scan(&priority)
-	if err != nil {
-		return fmt.Errorf("Failed getting priority for %v: %v", domain, err)
-	}
-	err = ds.db.Query(`DELETE FROM domains_to_crawl WHERE priority = ? AND domain = ?`,
-		priority, domain).Exec()
-	if err != nil {
-		return fmt.Errorf("Failed deleting %v from domains_to_crawl: %v", domain, err)
-	}
-	return nil
 }
