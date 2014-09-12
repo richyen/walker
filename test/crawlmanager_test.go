@@ -32,11 +32,13 @@ func TestBasicCrawlManagerRun(t *testing.T) {
 		parse("http://norobots.com/page2.html"),
 		parse("http://norobots.com/page3.html"),
 	})
+	ds.On("UnclaimHost", "norobots.com").Return()
 	ds.On("ClaimNewHost").Return("robotsdelay1.com")
 	ds.On("LinksForHost", "robotsdelay1.com").Return([]*url.URL{
 		parse("http://robotsdelay1.com/page4.html"),
 		parse("http://robotsdelay1.com/page5.html"),
 	})
+	ds.On("UnclaimHost", "robotsdelay1.com").Return()
 
 	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
 	ds.On("StoreParsedURL",

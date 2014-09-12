@@ -73,6 +73,11 @@ func (f *fetcher) start() {
 		default:
 		}
 
+		if f.host != "" {
+			//TODO: ensure that this unclaim will happen... probably want the
+			//logic below in a function where the Unclaim is deferred
+			f.manager.ds.UnclaimHost(f.host)
+		}
 		f.host = f.manager.ds.ClaimNewHost()
 		f.fetchRobots(f.host)
 		f.crawldelay = time.Duration(Config.DefaultCrawlDelay) * time.Second
