@@ -167,6 +167,7 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *url.URL {
 	for _, l := range links {
 		linkchan <- l
 	}
+	close(linkchan)
 	return linkchan
 }
 
@@ -183,22 +184,22 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		//TODO: populate robots_excluded
 	}
 
-	redirectURL, _ := fr.Res.Location()
+	//TODOs here due to gocql's inability to allow nils, find some other way to do it.
+	//TODO: redirectURL, _ := fr.Res.Location()
 
 	err = ds.db.Query(
-		`INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status,
-			error, fp, redirect_url, ip, mime)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		domain,
 		subdomain,
 		u.Path,
 		u.Scheme,
 		fr.FetchTime,
 		fr.Res.StatusCode,
-		nil, //TODO: get fp
-		redirectURL,
-		nil, //TODO can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
-		fr.Res.Header.Get("Content-Type"),
+		//TODO: error -- fr.FetchError,
+		//TODO: fp
+		//TODO: can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
+		//TODO: fr.Res.Header.Get("Content-Type"),
 	).Exec()
 	if err != nil {
 		log4go.Error("Failed storing fetch results: %v", err)
@@ -245,7 +246,7 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 		if subdomain != "" {
 			subdomain = subdomain + "."
 		}
-		link := fmt.Sprintf("%s://%s%s%s", protocol, subdomain, dbdomain, path)
+		link := fmt.Sprintf("%s://%s%s/%s", protocol, subdomain, dbdomain, path)
 		u, e := url.Parse(link)
 		if e != nil {
 			log4go.Error("Error adding link (%v) to crawl: %v", link, e)
@@ -255,6 +256,28 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 		}
 	}
 	return
+}
+
+// ToURL creates a *url.URL out of our commonly used column values.
+func ToURL(domain, subdomain, path, protocol string) (*url.URL, error) {
+	// Make sure the subdomain ends in '.' if it exists
+	if subdomain != "" && !strings.HasSuffix(subdomain, ".") {
+		subdomain = subdomain + "."
+	}
+
+	// Make sure the path starts in '/' if it exists
+	if path != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	l := fmt.Sprintf("%s://%s%s%s", protocol, subdomain, domain, path)
+	u, err := url.Parse(l)
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't create a *url.URL "+
+			"from domain: %v, subdomain: %v, path: %v, protocol: %v -- error: %v",
+			domain, subdomain, path, protocol, err)
+	}
+	return u, nil
 }
 
 // createCassandraSchema creates the walker schema in the configured Cassandra
