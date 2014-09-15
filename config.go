@@ -76,7 +76,7 @@ func SetDefaultConfig() {
 	Config.UserAgent = "Walker (http://github.com/iParadigms/walker)"
 	Config.DefaultCrawlDelay = 1
 	Config.MaxHTTPContentSizeBytes = 20 * 1024 * 1024 // 20MB
-	Config.NumSimultaneousFetchers = 1
+	Config.NumSimultaneousFetchers = 10
 	Config.IgnoreTags = []string{"script", "img", "link"}
 	Config.Cassandra.Hosts = []string{"localhost"}
 	Config.Cassandra.Keyspace = "walker"
