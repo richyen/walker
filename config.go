@@ -31,6 +31,7 @@ type WalkerConfig struct {
 	MaxHTTPContentSizeBytes int64    `yaml:"max_http_content_size_bytes"`
 	IgnoreTags              []string `yaml:"ignore_tags"`
 	MaxLinksPerPage         int      `yaml:"max_links_per_page"`
+	NumSimultaneousFetchers int      `yaml:"num_simultaneous_fetchers"`
 
 	// TODO: consider these config items
 	// allowed schemes (file://, https://, etc.)
@@ -75,6 +76,7 @@ func SetDefaultConfig() {
 	Config.UserAgent = "Walker (http://github.com/iParadigms/walker)"
 	Config.DefaultCrawlDelay = 1
 	Config.MaxHTTPContentSizeBytes = 20 * 1024 * 1024 // 20MB
+	Config.NumSimultaneousFetchers = 1
 	Config.IgnoreTags = []string{"script", "img", "link"}
 	Config.Cassandra.Hosts = []string{"localhost"}
 	Config.Cassandra.Keyspace = "walker"

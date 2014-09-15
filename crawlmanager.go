@@ -14,7 +14,7 @@ type CrawlManager struct {
 	// CrawlManager is going to use. Good for faking remote servers for
 	// testing.
 	Transport http.RoundTripper
-	f         *fetcher
+	fetchers  []*fetcher
 	handlers  []Handler
 	ds        Datastore
 	started   bool
@@ -40,8 +40,12 @@ func (cm *CrawlManager) Start() {
 		panic("Cannot start a CrawlManager multiple times")
 	}
 	cm.started = true
-	cm.f = newFetcher(cm)
-	cm.f.start()
+	numFetchers := Config.NumSimultaneousFetchers
+	cm.fetchers = make([]*fetcher, numFetchers)
+	for i := 0; i < numFetchers; i++ {
+		cm.fetchers[i] = newFetcher(cm)
+		cm.fetchers[i].start()
+	}
 }
 
 func (cm *CrawlManager) Stop() {
@@ -49,7 +53,9 @@ func (cm *CrawlManager) Stop() {
 	if !cm.started {
 		panic("Cannot stop a CrawlManager that has not been started")
 	}
-	cm.f.stop()
+	for i := 0; i<len(cm.fetchers); i++ {
+		cm.fetchers[i].stop()
+	}
 	//TODO: wait till all fetchers have stopped
 }
 
