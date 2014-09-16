@@ -155,7 +155,13 @@ func TestDatastoreBasic(t *testing.T) {
 	results := map[url.URL]int{}
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time, &status) {
 		if !crawl_time.Equal(time.Unix(0, 0)) {
-			u, _ := walker.ToURL(linkdomain, subdomain, path, protocol)
+			link := &walker.CassandraLink{
+				Domain:    linkdomain,
+				Subdomain: subdomain,
+				Path:      path,
+				Protocol:  protocol,
+			}
+			u, _ := link.GetURL()
 			results[*u] = status
 		}
 	}

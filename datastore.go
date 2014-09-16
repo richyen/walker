@@ -258,24 +258,36 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 	return
 }
 
-// ToURL creates a *url.URL out of our commonly used column values.
-func ToURL(domain, subdomain, path, protocol string) (*url.URL, error) {
+// CassandraLink is a structure that captures a URL as it exists in the
+// cassandra database. It can be used to turn fields like domain, subdomain,
+// path, and protocol into a *url.URL.
+type CassandraLink struct {
+	Domain    string
+	Subdomain string
+	Path      string
+	Protocol  string
+	CrawlTime time.Time
+}
+
+func (cl *CassandraLink) GetURL() (*url.URL, error) {
 	// Make sure the subdomain ends in '.' if it exists
+	subdomain := cl.Subdomain
 	if subdomain != "" && !strings.HasSuffix(subdomain, ".") {
 		subdomain = subdomain + "."
 	}
 
 	// Make sure the path starts in '/' if it exists
+	path := cl.Path
 	if path != "" && !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 
-	l := fmt.Sprintf("%s://%s%s%s", protocol, subdomain, domain, path)
+	l := fmt.Sprintf("%s://%s%s%s", cl.Protocol, subdomain, cl.Domain, path)
 	u, err := url.Parse(l)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't create a *url.URL "+
 			"from domain: %v, subdomain: %v, path: %v, protocol: %v -- error: %v",
-			domain, subdomain, path, protocol, err)
+			cl.Domain, subdomain, path, cl.Protocol, err)
 	}
 	return u, nil
 }
