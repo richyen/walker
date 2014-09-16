@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	_ "net/http/pprof"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -11,17 +12,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var config string
+func fatalf(format string, args ...interface{}) {
+	fmt.Printf(format, args...)
+	os.Exit(1)
+}
 
 func main() {
+
+	var config string
 	walkerCommand := &cobra.Command{
-		Use:   "walker",
-		Short: "start an all-in-one crawler",
+		Use: "walker",
+	}
+	walkerCommand.Flags().StringVar(&config, "config", "", "path to a config file to load")
+
+	crawlCommand := &cobra.Command{
+		Use:   "crawl",
+		Short: "start an all-in-one crawler downloading to the current directory",
 		Run: func(cmd *cobra.Command, args []string) {
 			ds, err := walker.NewCassandraDatastore()
 			if err != nil {
-				fmt.Printf("Failed creating Cassandra datastore: %v", err)
-				os.Exit(1)
+				fatalf("Failed creating Cassandra datastore: %v", err)
 			}
 
 			h := &walker.SimpleWriterHandler{}
@@ -52,7 +62,7 @@ func main() {
 			<-managerDone
 		},
 	}
-	walkerCommand.Flags().StringVar(&config, "config", "", "path to a config file to load")
+	walkerCommand.AddCommand(crawlCommand)
 
 	fetchCommand := &cobra.Command{
 		Use:   "fetch",
@@ -71,5 +81,30 @@ func main() {
 		},
 	}
 	walkerCommand.AddCommand(dispatchCommand)
+
+	var seedURL string
+	seedCommand := &cobra.Command{
+		Use:   "seed",
+		Short: "add a seed URL to the datastore",
+		Run: func(cmd *cobra.Command, args []string) {
+			if seedURL == "" {
+				fatalf("Seed URL needed to execute; add on with --url/-u")
+			}
+			u, err := url.Parse(seedURL)
+			if err != nil {
+				fatalf("Could not parse %v as a url: %v", seedURL, err)
+			}
+
+			ds, err := walker.NewCassandraDatastore()
+			if err != nil {
+				fatalf("Failed creating Cassandra datastore: %v", err)
+			}
+
+			ds.StoreParsedURL(u, nil)
+		},
+	}
+	seedCommand.Flags().StringVarP(&seedURL, "url", "u", "", "URL to add as a seed")
+	walkerCommand.AddCommand(seedCommand)
+
 	walkerCommand.Execute()
 }

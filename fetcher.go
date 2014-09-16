@@ -93,6 +93,8 @@ func (f *fetcher) start() {
 
 		for link := range f.manager.ds.LinksForHost(f.host) {
 
+			//TODO: check <-f.quit and clean up appropriately
+
 			fr := &FetchResults{Url: link}
 
 			if f.robots != nil && !f.robots.Test(link.String()) {

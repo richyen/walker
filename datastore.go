@@ -42,7 +42,8 @@ type Datastore interface {
 	// StoreParsedURL stores a URL parsed out of a page (i.e. a URL we may not
 	// have crawled yet). `u` is the URL to store. `res` is the FetchResults
 	// object for the fetch from which we got the URL, for any context the
-	// datastore may want.
+	// datastore may want. A datastore implementation should handle `res` being
+	// nil, so links can be seeded without a fetch having occurred.
 	//
 	// This layer should handle efficiently deduplicating
 	// links (i.e. a fetcher should be safe feeding the same URL many times.
