@@ -1,0 +1,6 @@
+# The Walker Configuration File
+#
+# This yaml file is used to test the config loader.
+
+# Test value set here so we can make sure it gets picked up
+user_agent: "Test Agent (set in yaml)"

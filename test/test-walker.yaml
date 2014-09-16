@@ -4,6 +4,7 @@
 # package for comments and descriptions
 
 default_crawl_delay: 0
+num_simultaneous_fetchers: 1
 cassandra:
     keyspace: "walker_test"
     replication_factor: 1
