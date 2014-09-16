@@ -79,6 +79,11 @@ func (f *fetcher) start() {
 			f.manager.ds.UnclaimHost(f.host)
 		}
 		f.host = f.manager.ds.ClaimNewHost()
+		if f.host == "" {
+			time.Sleep(time.Second)
+			continue
+		}
+
 		f.fetchRobots(f.host)
 		f.crawldelay = time.Duration(Config.DefaultCrawlDelay) * time.Second
 		if f.robots != nil && int(f.robots.CrawlDelay) > Config.DefaultCrawlDelay {
