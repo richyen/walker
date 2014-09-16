@@ -75,10 +75,6 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 	return ds, nil
 }
 
-func (ds *CassandraDatastore) Close() {
-	ds.db.Close()
-}
-
 func (ds *CassandraDatastore) ClaimNewHost() string {
 
 	// Get our range of priority values and sort high to low
