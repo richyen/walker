@@ -64,8 +64,9 @@ func GetCassandraConfig() *gocql.ClusterConfig {
 }
 
 func NewCassandraDatastore() (*CassandraDatastore, error) {
-	ds := new(CassandraDatastore)
-	ds.cf = GetCassandraConfig()
+	ds := &CassandraDatastore{
+		cf: GetCassandraConfig(),
+	}
 	var err error
 	ds.db, err = ds.cf.CreateSession()
 	if err != nil {
