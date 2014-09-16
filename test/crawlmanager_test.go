@@ -66,9 +66,16 @@ func TestBasicCrawlManagerRun(t *testing.T) {
 	manager.SetDatastore(ds)
 	manager.AddHandler(h)
 	manager.Transport = GetFakeTransport()
-	go manager.Start()
-	time.Sleep(time.Second * 4)
+
+	managerDone := make(chan bool)
+	go func() {
+		manager.Start()
+		managerDone <- true
+	}()
+	time.Sleep(time.Second * 3)
 	manager.Stop()
+	<-managerDone
+
 	rs.Stop()
 
 	for _, call := range h.Calls {
