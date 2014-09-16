@@ -62,7 +62,7 @@ func TestBasicCrawlManagerRun(t *testing.T) {
 		Body: "User-agent: *\nCrawl-delay: 1\n",
 	})
 
-	manager := walker.NewCrawlManager()
+	manager := &walker.CrawlManager{}
 	manager.SetDatastore(ds)
 	manager.AddHandler(h)
 	manager.Transport = GetFakeTransport()

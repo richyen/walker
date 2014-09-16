@@ -13,7 +13,7 @@ import (
 )
 
 func TestDispatcherBasic(t *testing.T) {
-	db, _ := getDB(t)
+	db := getDB(t)
 
 	insertDomainInfo := `INSERT INTO domain_info (domain) VALUES (?)`
 	insertLinkStatus := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status)

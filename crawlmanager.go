@@ -1,14 +1,16 @@
 package walker
 
 import (
-	"code.google.com/p/log4go"
 	"net/http"
 	"sync"
+
+	"code.google.com/p/log4go"
 )
 
-// CrawlManager configures and starts the crawl.
+// CrawlManager configures and runs the crawl.
 //
-// This implementation is dumb and only starts one fetcher
+// The calling code must create a CrawlManager, set a Datastore and handlers,
+// then call `Start()`
 type CrawlManager struct {
 	// Transport can be set to override the default network transport the
 	// CrawlManager is going to use. Good for faking remote servers for
@@ -19,12 +21,6 @@ type CrawlManager struct {
 	handlers  []Handler
 	ds        Datastore
 	started   bool
-}
-
-// NewCrawlManager creates but does not start a CrawlManager. The caller must
-// set a Datastore and handlers, then call `Start()`
-func NewCrawlManager() *CrawlManager {
-	return new(CrawlManager)
 }
 
 // Start begins processing assuming that the datastore and any handlers have
