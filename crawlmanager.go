@@ -1,9 +1,9 @@
 package walker
 
 import (
-	"net/http"
-
 	"code.google.com/p/log4go"
+	"net/http"
+	"sync"
 )
 
 // CrawlManager configures and starts the crawl.
@@ -14,7 +14,8 @@ type CrawlManager struct {
 	// CrawlManager is going to use. Good for faking remote servers for
 	// testing.
 	Transport http.RoundTripper
-	f         *fetcher
+	fetchers  []*fetcher
+	fetchWait sync.WaitGroup
 	handlers  []Handler
 	ds        Datastore
 	started   bool
@@ -40,8 +41,17 @@ func (cm *CrawlManager) Start() {
 		panic("Cannot start a CrawlManager multiple times")
 	}
 	cm.started = true
-	cm.f = newFetcher(cm)
-	cm.f.start()
+	numFetchers := Config.NumSimultaneousFetchers
+	cm.fetchers = make([]*fetcher, numFetchers)
+	for i := 0; i < numFetchers; i++ {
+		fetch := newFetcher(cm)
+		cm.fetchers[i] = fetch
+		cm.fetchWait.Add(1)
+		go func() {
+			defer cm.fetchWait.Done()
+			fetch.start()
+		}()
+	}
 }
 
 func (cm *CrawlManager) Stop() {
@@ -49,8 +59,10 @@ func (cm *CrawlManager) Stop() {
 	if !cm.started {
 		panic("Cannot stop a CrawlManager that has not been started")
 	}
-	cm.f.stop()
-	//TODO: wait till all fetchers have stopped
+	for i := 0; i < len(cm.fetchers); i++ {
+		cm.fetchers[i].stop()
+	}
+	cm.fetchWait.Wait()
 }
 
 // AddHandler will cause the given handler to be called once for each fetch
