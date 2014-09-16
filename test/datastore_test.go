@@ -1,3 +1,5 @@
+// +build cassandra
+
 package test
 
 import (
