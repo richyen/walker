@@ -3,8 +3,6 @@
 package test
 
 import (
-	"net/url"
-
 	"testing"
 	"time"
 
@@ -29,14 +27,14 @@ const norobots_page1 string = `<!DOCTYPE html>
 func TestBasicCrawlManagerRun(t *testing.T) {
 	ds := &MockDatastore{}
 	ds.On("ClaimNewHost").Return("norobots.com").Once()
-	ds.On("LinksForHost", "norobots.com").Return([]*url.URL{
+	ds.On("LinksForHost", "norobots.com").Return([]*walker.URL{
 		parse("http://norobots.com/page1.html"),
 		parse("http://norobots.com/page2.html"),
 		parse("http://norobots.com/page3.html"),
 	})
 	ds.On("UnclaimHost", "norobots.com").Return()
 	ds.On("ClaimNewHost").Return("robotsdelay1.com")
-	ds.On("LinksForHost", "robotsdelay1.com").Return([]*url.URL{
+	ds.On("LinksForHost", "robotsdelay1.com").Return([]*walker.URL{
 		parse("http://robotsdelay1.com/page4.html"),
 		parse("http://robotsdelay1.com/page5.html"),
 	})
@@ -44,7 +42,7 @@ func TestBasicCrawlManagerRun(t *testing.T) {
 
 	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
 	ds.On("StoreParsedURL",
-		mock.AnythingOfType("*url.URL"),
+		mock.AnythingOfType("*walker.URL"),
 		mock.AnythingOfType("*walker.FetchResults")).Return()
 
 	h := &MockHandler{}

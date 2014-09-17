@@ -14,14 +14,23 @@ import (
 
 	"code.google.com/p/go.net/html"
 	"code.google.com/p/go.net/html/charset"
+	"code.google.com/p/go.net/publicsuffix"
 	"code.google.com/p/log4go"
 )
+
+// Epoch is a convenience for time.Unix(0, 0), used as the epoch time in
+// Walker, for example to indicate that a link has not been fetched yet.
+var Epoch time.Time
+
+func init() {
+	Epoch = time.Unix(0, 0)
+}
 
 // FetchResults contains all relevant context and return data from an
 // individual fetch. Handlers receive this to process results.
 type FetchResults struct {
 	// Url that was fetched; will always be populated
-	Url *url.URL
+	Url *URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
 	// true. Response.Body will be read and closed internally by walker; to get
@@ -43,6 +52,60 @@ type FetchResults struct {
 	// True if we did not request this link because it is excluded by
 	// robots.txt rules
 	ExcludedByRobots bool
+}
+
+// URL is the walker URL object, which embeds *url.URL but has extra data and
+// capabilities used by walker. Note that LastCrawled should not be set to it's
+// zero value, it should be set to the Epoch.
+type URL struct {
+	*url.URL
+
+	// LastCrawled is the last time we crawled this URL, for example to use a
+	// Last-Modified header.
+	LastCrawled time.Time
+}
+
+// CreateURL creates a walker URL from values usually pulled out of the
+// datastore. subdomain may optionally include a trailing '.', and path may
+// optionally include a prefixed '/'.
+func CreateURL(domain, subdomain, path, protocol string, lastcrawled time.Time) (*URL, error) {
+	if subdomain != "" && !strings.HasSuffix(subdomain, ".") {
+		subdomain = subdomain + "."
+	}
+	if path != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+
+	ref := fmt.Sprintf("%s://%s%s%s", protocol, subdomain, domain, path)
+	u, err := ParseURL(ref)
+	if err != nil {
+		return nil, err
+	}
+	u.LastCrawled = lastcrawled
+	return u, nil
+}
+
+// ParseURL is the walker.URL equivalent of url.Parse
+func ParseURL(ref string) (*URL, error) {
+	u, err := url.Parse(ref)
+	return &URL{URL: u, LastCrawled: Epoch}, err
+}
+
+func (u *URL) ToplevelDomainPlusOne() string {
+	domain, err := publicsuffix.EffectiveTLDPlusOne(u.Host)
+	if err != nil {
+		log4go.Error("Error trying to get TLD+1 from %v, error: %v", *u, err)
+		return u.Host
+	}
+	return domain
+}
+
+func (u *URL) Subdomain() string {
+	tld := u.ToplevelDomainPlusOne()
+	if len(u.Host) == len(tld) {
+		return ""
+	}
+	return strings.TrimSuffix(u.Host, "."+tld)
 }
 
 type fetcher struct {
@@ -135,9 +198,15 @@ func (f *fetcher) start() {
 					log4go.Warn("error parsing HTML for page %v: %v", link, err)
 					continue
 				}
-				for _, l := range outlinks {
-					log4go.Debug("Parsed link: %v", l)
-					f.manager.ds.StoreParsedURL(l, fr)
+				for _, outlink := range outlinks {
+					if outlink.Scheme == "" {
+						outlink.Scheme = link.Scheme
+					}
+					if outlink.Host == "" {
+						outlink.Host = link.Host
+					}
+					log4go.Debug("Parsed link: %v", outlink)
+					f.manager.ds.StoreParsedURL(outlink, fr)
 				}
 			} else {
 				log4go.Debug("Not parsing due to content type: %v", fr.Res.Header["Content-Type"])
@@ -151,10 +220,12 @@ func (f *fetcher) stop() {
 }
 
 func (f *fetcher) fetchRobots(host string) {
-	u := &url.URL{
-		Scheme: "http",
-		Host:   host,
-		Path:   "robots.txt",
+	u := &URL{
+		URL: &url.URL{
+			Scheme: "http",
+			Host:   host,
+			Path:   "robots.txt",
+		},
 	}
 	res, err := f.fetch(u)
 	if err != nil {
@@ -172,7 +243,7 @@ func (f *fetcher) fetchRobots(host string) {
 	f.robots = robots.FindGroup("Turnitinbot")
 }
 
-func (f *fetcher) fetch(u *url.URL) (*http.Response, error) {
+func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create new request object for %v): %v", u, err)
@@ -189,15 +260,15 @@ func (f *fetcher) fetch(u *url.URL) (*http.Response, error) {
 	return res, nil
 }
 
-// getLinks parses the response for links, doing it's best with bad HTML
-func getLinks(contents []byte) ([]*url.URL, error) {
+// getLinks parses the response for links, doing it's best with bad HTML.
+func getLinks(contents []byte) ([]*URL, error) {
 	utf8Reader, err := charset.NewReader(bytes.NewReader(contents), "text/html")
 	if err != nil {
 		return nil, err
 	}
 	tokenizer := html.NewTokenizer(utf8Reader)
 
-	var links []*url.URL
+	var links []*URL
 	tags := getIncludedTags()
 
 	for {
@@ -242,13 +313,13 @@ func getIncludedTags() map[string]bool {
 // parseAnchorAttrs iterates over all of the attributes in the current anchor token.
 // If a href is found, it adds the link value to the links slice.
 // Returns the new link slice.
-func parseAnchorAttrs(tokenizer *html.Tokenizer, links []*url.URL) []*url.URL {
+func parseAnchorAttrs(tokenizer *html.Tokenizer, links []*URL) []*URL {
 	//TODO: rework this to be cleaner, passing in `links` to be appended to
 	//isn't great
 	for {
 		key, val, moreAttr := tokenizer.TagAttr()
 		if bytes.Compare(key, []byte("href")) == 0 {
-			u, err := url.Parse(string(val))
+			u, err := ParseURL(string(val))
 			if err == nil {
 				links = append(links, u)
 			}

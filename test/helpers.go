@@ -3,8 +3,9 @@ package test
 import (
 	"net"
 	"net/http"
-	"net/url"
 	"time"
+
+	"github.com/iParadigms/walker"
 )
 
 // FakeDial makes connections to localhost, no matter what addr was given.
@@ -23,8 +24,8 @@ func GetFakeTransport() http.RoundTripper {
 }
 
 // parse is a helper to just get a URL object from a string we know is a safe
-// url (url.Parse requires us to deal with potential errors)
-func parse(link string) *url.URL {
-	u, _ := url.Parse(link)
+// url (ParseURL requires us to deal with potential errors)
+func parse(link string) *walker.URL {
+	u, _ := walker.ParseURL(link)
 	return u
 }

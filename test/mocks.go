@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"net/url"
 
 	"github.com/iParadigms/walker"
 	"github.com/stretchr/testify/mock"
@@ -15,7 +14,7 @@ type MockDatastore struct {
 	mock.Mock
 }
 
-func (ds *MockDatastore) StoreParsedURL(u *url.URL, res *walker.FetchResults) {
+func (ds *MockDatastore) StoreParsedURL(u *walker.URL, res *walker.FetchResults) {
 	ds.Mock.Called(u, res)
 }
 
@@ -32,10 +31,10 @@ func (ds *MockDatastore) UnclaimHost(host string) {
 	ds.Mock.Called(host)
 }
 
-func (ds *MockDatastore) LinksForHost(domain string) <-chan *url.URL {
+func (ds *MockDatastore) LinksForHost(domain string) <-chan *walker.URL {
 	args := ds.Mock.Called(domain)
-	urls := args.Get(0).([]*url.URL)
-	ch := make(chan *url.URL, len(urls))
+	urls := args.Get(0).([]*walker.URL)
+	ch := make(chan *walker.URL, len(urls))
 	for _, u := range urls {
 		ch <- u
 	}

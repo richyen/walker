@@ -3,7 +3,6 @@ package walker
 import (
 	"bytes"
 	"fmt"
-	"net/url"
 	"strings"
 	"text/template"
 	"time"
@@ -32,7 +31,7 @@ type Datastore interface {
 	UnclaimHost(host string)
 
 	// LinksForHost returns a channel that will feed URLs for a given host.
-	LinksForHost(host string) <-chan *url.URL
+	LinksForHost(host string) <-chan *URL
 
 	// StoreURLFetchResults takes the return data/metadata from a fetch and
 	// stores the visit. Fetchers will call this once for each link in the
@@ -45,9 +44,11 @@ type Datastore interface {
 	// datastore may want. A datastore implementation should handle `res` being
 	// nil, so links can be seeded without a fetch having occurred.
 	//
+	// URLs passed to StoreParsedURL should be absolute.
+	//
 	// This layer should handle efficiently deduplicating
 	// links (i.e. a fetcher should be safe feeding the same URL many times.
-	StoreParsedURL(u *url.URL, fr *FetchResults)
+	StoreParsedURL(u *URL, fr *FetchResults)
 }
 
 // CassandraDatastore is the primary Datastore implementation, using Apache
@@ -153,7 +154,7 @@ func (ds *CassandraDatastore) UnclaimHost(host string) {
 	}
 }
 
-func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *url.URL {
+func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *URL {
 	links, err := ds.getSegmentLinks(domain)
 	if err != nil {
 		log4go.Error("Failed to grab segment for %v: %v", domain, err)
@@ -161,7 +162,7 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *url.URL {
 	}
 	log4go.Info("Returning %v links to crawl domain %v", len(links), domain)
 
-	linkchan := make(chan *url.URL, len(links))
+	linkchan := make(chan *URL, len(links))
 	for _, l := range links {
 		linkchan <- l
 	}
@@ -204,19 +205,22 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 	}
 }
 
-func (ds *CassandraDatastore) StoreParsedURL(u *url.URL, fr *FetchResults) {
+func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
 	if u.Host == "" {
 		log4go.Warn("Not handling link because there is no host: %v", *u)
 		return
 	}
-	ds.addDomainIfNew(u.Host)
+	domain := u.ToplevelDomainPlusOne()
+	ds.addDomainIfNew(domain)
 	err := ds.db.Query(`INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
-						VALUES (?, ?, ?, ?, ?)`, u.Host, "", u.Path, u.Scheme, time.Unix(0, 0)).Exec()
+						VALUES (?, ?, ?, ?, ?)`,
+		domain, u.Subdomain(), u.RequestURI(), u.Scheme, Epoch).Exec()
 	if err != nil {
 		log4go.Error("failed inserting parsed url (%v) to cassandra, %v", u, err)
 	}
 }
 
+// addDomainIfNew expects a toplevel domain, no subdomain
 func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 	var count int
 	err := ds.db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
@@ -232,7 +236,7 @@ func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 	}
 }
 
-func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, err error) {
+func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*URL, err error) {
 	q := ds.db.Query(`SELECT domain, subdomain, path, protocol, crawl_time
 						FROM segments WHERE domain = ?`, domain)
 	iter := q.Iter()
@@ -241,13 +245,9 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 	var dbdomain, subdomain, path, protocol string
 	var crawl_time time.Time
 	for iter.Scan(&dbdomain, &subdomain, &path, &protocol, &crawl_time) {
-		if subdomain != "" {
-			subdomain = subdomain + "."
-		}
-		link := fmt.Sprintf("%s://%s%s/%s", protocol, subdomain, dbdomain, path)
-		u, e := url.Parse(link)
+		u, e := CreateURL(dbdomain, subdomain, path, protocol, crawl_time)
 		if e != nil {
-			log4go.Error("Error adding link (%v) to crawl: %v", link, e)
+			log4go.Error("Error adding link (%v) to crawl: %v", u, e)
 		} else {
 			log4go.Debug("Adding link: %v", u)
 			links = append(links, u)
@@ -256,41 +256,7 @@ func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*url.URL, 
 	return
 }
 
-// CassandraLink is a structure that captures a URL as it exists in the
-// cassandra database. It can be used to turn fields like domain, subdomain,
-// path, and protocol into a *url.URL.
-type CassandraLink struct {
-	Domain    string
-	Subdomain string
-	Path      string
-	Protocol  string
-	CrawlTime time.Time
-}
-
-func (cl *CassandraLink) GetURL() (*url.URL, error) {
-	// Make sure the subdomain ends in '.' if it exists
-	subdomain := cl.Subdomain
-	if subdomain != "" && !strings.HasSuffix(subdomain, ".") {
-		subdomain = subdomain + "."
-	}
-
-	// Make sure the path starts in '/' if it exists
-	path := cl.Path
-	if path != "" && !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-
-	l := fmt.Sprintf("%s://%s%s%s", cl.Protocol, subdomain, cl.Domain, path)
-	u, err := url.Parse(l)
-	if err != nil {
-		return nil, fmt.Errorf("Couldn't create a *url.URL "+
-			"from domain: %v, subdomain: %v, path: %v, protocol: %v -- error: %v",
-			cl.Domain, subdomain, path, cl.Protocol, err)
-	}
-	return u, nil
-}
-
-// createCassandraSchema creates the walker schema in the configured Cassandra
+// CreateCassandraSchema creates the walker schema in the configured Cassandra
 // database. It requires that the keyspace not already exist (so as to losing
 // non-test data), with the exception of the walker_test schema, which it will
 // drop automatically.

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	_ "net/http/pprof"
-	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
@@ -90,7 +89,7 @@ func main() {
 			if seedURL == "" {
 				fatalf("Seed URL needed to execute; add on with --url/-u")
 			}
-			u, err := url.Parse(seedURL)
+			u, err := walker.ParseURL(seedURL)
 			if err != nil {
 				fatalf("Could not parse %v as a url: %v", seedURL, err)
 			}

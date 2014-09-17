@@ -87,11 +87,11 @@ func TestDatastoreBasic(t *testing.T) {
 	page2URL := parse("http://test.com/page2.html")
 	links := map[url.URL]bool{}
 	expectedLinks := map[url.URL]bool{
-		*page1URL: true,
-		*page2URL: true,
+		*page1URL.URL: true,
+		*page2URL.URL: true,
 	}
 	for u := range ds.LinksForHost("test.com") {
-		links[*u] = true
+		links[*u.URL] = true
 	}
 	if !reflect.DeepEqual(links, expectedLinks) {
 		t.Errorf("Expected links from LinksForHost: %v\nBut got: %v", expectedLinks, links)
@@ -110,7 +110,7 @@ func TestDatastoreBasic(t *testing.T) {
 			ContentLength: 18,
 			Request: &http.Request{
 				Method:        "GET",
-				URL:           page1URL,
+				URL:           page1URL.URL,
 				Proto:         "HTTP/1.1",
 				ProtoMajor:    1,
 				ProtoMinor:    1,
@@ -132,7 +132,7 @@ func TestDatastoreBasic(t *testing.T) {
 			ContentLength: 18,
 			Request: &http.Request{
 				Method:        "GET",
-				URL:           page2URL,
+				URL:           page2URL.URL,
 				Proto:         "HTTP/1.1",
 				ProtoMajor:    1,
 				ProtoMinor:    1,
@@ -146,8 +146,8 @@ func TestDatastoreBasic(t *testing.T) {
 	ds.StoreURLFetchResults(page2Fetch)
 
 	expectedResults := map[url.URL]int{
-		*page1URL: 200,
-		*page2URL: 200,
+		*page1URL.URL: 200,
+		*page2URL.URL: 200,
 	}
 	iter := db.Query(`SELECT domain, subdomain, path, protocol, crawl_time, status
 						FROM links WHERE domain = 'test.com'`).Iter()
@@ -157,14 +157,8 @@ func TestDatastoreBasic(t *testing.T) {
 	results := map[url.URL]int{}
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time, &status) {
 		if !crawl_time.Equal(time.Unix(0, 0)) {
-			link := &walker.CassandraLink{
-				Domain:    linkdomain,
-				Subdomain: subdomain,
-				Path:      path,
-				Protocol:  protocol,
-			}
-			u, _ := link.GetURL()
-			results[*u] = status
+			u, _ := walker.CreateURL(linkdomain, subdomain, path, protocol, crawl_time)
+			results[*u.URL] = status
 		}
 	}
 	if !reflect.DeepEqual(results, expectedResults) {
@@ -192,5 +186,39 @@ func TestDatastoreBasic(t *testing.T) {
 				WHERE priority = ? AND domain = 'test.com'`, 0).Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected unclaimed domain to be deleted from domains_to_crawl")
+	}
+}
+
+func TestWalkerURL(t *testing.T) {
+	url1, err := url.Parse("http://sub1.test.com/thepath?query=blah")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wurl1, err := walker.ParseURL("http://sub1.test.com/thepath?query=blah")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if url1.String() != wurl1.String() {
+		t.Errorf("URLs should be the same: %v\nAnd: %v")
+	}
+	tld := wurl1.ToplevelDomainPlusOne()
+	expectedtld := "test.com"
+	if tld != expectedtld {
+		t.Errorf("Expected ToplevelDomainPlusOne to be %v\nBut got: %v", expectedtld, tld)
+	}
+	sub := wurl1.Subdomain()
+	expectedsub := "sub1"
+	if sub != expectedsub {
+		t.Errorf("Expected ToplevelDomainPlusOne to be %v\nBut got: %v", expectedsub, sub)
+	}
+
+	created, err := walker.CreateURL("test.com", "sub1", "thepath?query=blah", "http",
+		time.Unix(0, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.String() != wurl1.String() {
+		t.Errorf("Expected CreateURL to return %v\nBut got: %v", wurl1, created)
 	}
 }

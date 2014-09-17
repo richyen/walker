@@ -3,6 +3,7 @@
 package test
 
 import (
+	"net/url"
 	"reflect"
 
 	"testing"
@@ -23,12 +24,12 @@ func TestDispatcherBasic(t *testing.T) {
 
 	queries := []*gocql.Query{
 		db.Query(insertDomainInfo, "test.com"),
-		db.Query(insertLink, "test.com", "", "page1.html", "http", time.Unix(0, 0)),
-		db.Query(insertLink, "test.com", "", "page2.html", "http", time.Unix(0, 0)),
-		db.Query(insertLink, "test.com", "", "page404.html", "http", time.Unix(0, 0)),
-		db.Query(insertLink, "test.com", "", "page500.html", "http", time.Unix(0, 0)),
-		db.Query(insertLink, "test.com", "", "notcrawled1.html", "http", time.Unix(0, 0)),
-		db.Query(insertLink, "test.com", "", "notcrawled2.html", "http", time.Unix(0, 0)),
+		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.Epoch),
+		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.Epoch),
+		db.Query(insertLink, "test.com", "", "page404.html", "http", walker.Epoch),
+		db.Query(insertLink, "test.com", "", "page500.html", "http", walker.Epoch),
+		db.Query(insertLink, "test.com", "", "notcrawled1.html", "http", walker.Epoch),
+		db.Query(insertLink, "test.com", "", "notcrawled2.html", "http", walker.Epoch),
 		db.Query(insertLinkStatus, "test.com", "", "page1.html", "http", time.Now(), 200),
 		db.Query(insertLinkStatus, "test.com", "", "page2.html", "http", time.Now(), 200),
 		db.Query(insertLinkStatus, "test.com", "", "page404.html", "http", time.Now(), 404),
@@ -51,31 +52,19 @@ func TestDispatcherBasic(t *testing.T) {
 	d.Stop()
 	<-done
 
-	expectedResults := map[walker.CassandraLink]bool{
-		walker.CassandraLink{
-			Domain:    "test.com",
-			Subdomain: "",
-			Path:      "notcrawled1.html",
-			Protocol:  "http",
-		}: true,
-		walker.CassandraLink{
-			Domain:    "test.com",
-			Subdomain: "",
-			Path:      "notcrawled2.html",
-			Protocol:  "http",
-		}: true,
+	url1 := parse("http://test.com/notcrawled1.html")
+	url2 := parse("http://test.com/notcrawled2.html")
+	expectedResults := map[url.URL]bool{
+		*url1.URL: true,
+		*url2.URL: true,
 	}
-	results := map[walker.CassandraLink]bool{}
+	results := map[url.URL]bool{}
 	iter := db.Query(`SELECT domain, subdomain, path, protocol
 						FROM segments WHERE domain = 'test.com'`).Iter()
 	var linkdomain, subdomain, path, protocol string
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol) {
-		results[walker.CassandraLink{
-			Domain:    linkdomain,
-			Subdomain: subdomain,
-			Path:      path,
-			Protocol:  protocol,
-		}] = true
+		u, _ := walker.CreateURL(linkdomain, subdomain, path, protocol, walker.Epoch)
+		results[*u.URL] = true
 	}
 	if !reflect.DeepEqual(results, expectedResults) {
 		t.Errorf("Expected results in segments: %v\nBut got: %v",

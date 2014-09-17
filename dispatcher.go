@@ -146,55 +146,45 @@ func (d *Dispatcher) generateSegment(domain string) error {
 						ORDER BY subdomain, path, protocol, crawl_time`, domain).Iter()
 	var linkdomain, subdomain, path, protocol string
 	var crawl_time time.Time
-	epoch := time.Unix(0, 0)
-	links := make(map[CassandraLink]bool)
+	links := make(map[string]*URL)
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time) {
-		link := CassandraLink{
-			Domain:    linkdomain,
-			Subdomain: subdomain,
-			Path:      path,
-			Protocol:  protocol,
-			CrawlTime: crawl_time,
+		u, err := CreateURL(linkdomain, subdomain, path, protocol, crawl_time)
+		if err != nil {
+			log4go.Error(err.Error())
+			continue
 		}
 
-		if crawl_time.Equal(epoch) {
+		if crawl_time.Equal(Epoch) {
 			if len(links) >= 500 {
 				// Stop here because we've moved on to a new link
 				log4go.Debug("Hit 500 links, not adding any more to the segment")
 				break
 			}
 
-			// Set CrawlTime to epoch so this link can be removed below (time
-			// given by Cassandra query can be different timezone so it won't
-			// match)
-			link.CrawlTime = epoch
-
-			log4go.Debug("Adding link to segment list: %v", link)
-			links[link] = true
+			log4go.Debug("Adding link to segment list: %#v", u)
+			links[u.String()] = u
 		} else {
 			// This means we've already crawled the link, so leave it out
 			// Because we order by crawl_time we won't hit the link again
-			// later with crawl_time == epoch
+			// later with crawl_time == Epoch
 
-			// The link in the map has epoch as CrawlTime, need this to properly delete it
-			link.CrawlTime = epoch
-			log4go.Debug("Link already crawled, removing from segment list: %v", link)
-			delete(links, link)
+			log4go.Debug("Link already crawled, removing from segment list: %#v", u)
+			delete(links, u.String())
 		}
 	}
 	if err := iter.Close(); err != nil {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
 	}
 
-	for link, _ := range links {
-		log4go.Debug("Inserting link in segment: %v", link)
+	for _, u := range links {
+		log4go.Debug("Inserting link in segment: %v", u)
 		err := d.db.Query(`INSERT INTO segments
 			(domain, subdomain, path, protocol, crawl_time)
 			VALUES (?, ?, ?, ?, ?)`,
-			link.Domain, link.Subdomain, link.Path, link.Protocol, link.CrawlTime).Exec()
+			u.ToplevelDomainPlusOne(), u.Subdomain(), u.Path, u.Scheme, u.LastCrawled).Exec()
 
 		if err != nil {
-			log4go.Error("Failed to insert link (%v), error: %v", link, err)
+			log4go.Error("Failed to insert link (%v), error: %v", u, err)
 		}
 	}
 	err := d.db.Query(`INSERT INTO domains_to_crawl (domain, priority, crawler_token)
