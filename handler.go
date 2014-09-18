@@ -34,7 +34,7 @@ func (h *SimpleWriterHandler) HandleResponse(res *FetchResults) {
 
 	path := filepath.Join(res.Url.Host, res.Url.RequestURI())
 	dir, _ := filepath.Split(path)
-	if err := os.MkdirAll(dir, 0666); err != nil {
+	if err := os.MkdirAll(dir, 0777); err != nil {
 		log4go.Error(err.Error())
 		return
 	}

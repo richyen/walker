@@ -7,7 +7,6 @@ import (
 	"text/template"
 	"time"
 
-	"code.google.com/p/go.net/publicsuffix"
 	"code.google.com/p/log4go"
 
 	"github.com/gocql/gocql"
@@ -171,9 +170,6 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *URL {
 }
 
 func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
-	u := fr.Url
-	domain, err := publicsuffix.EffectiveTLDPlusOne(u.Host)
-	subdomain := strings.TrimSuffix(u.Host, domain)
 
 	if fr.FetchError != nil {
 		//TODO
@@ -186,15 +182,21 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 	//TODOs here due to gocql's inability to allow nils, find some other way to do it.
 	//TODO: redirectURL, _ := fr.Res.Location()
 
-	err = ds.db.Query(
+	// The response may be null, set status to 0 until we do something with the FetchError
+	status := 0
+	if fr.Res != nil {
+		status = fr.Res.StatusCode
+	}
+
+	err := ds.db.Query(
 		`INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		domain,
-		subdomain,
-		u.Path,
-		u.Scheme,
+		fr.Url.ToplevelDomainPlusOne(),
+		fr.Url.Subdomain(),
+		fr.Url.Path,
+		fr.Url.Scheme,
 		fr.FetchTime,
-		fr.Res.StatusCode,
+		status,
 		//TODO: error -- fr.FetchError,
 		//TODO: fp
 		//TODO: can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
