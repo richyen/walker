@@ -40,12 +40,12 @@ func (cm *CrawlManager) Start() {
 	numFetchers := Config.NumSimultaneousFetchers
 	cm.fetchers = make([]*fetcher, numFetchers)
 	for i := 0; i < numFetchers; i++ {
-		fetch := newFetcher(cm)
-		cm.fetchers[i] = fetch
+		f := newFetcher(cm)
+		cm.fetchers[i] = f
 		cm.fetchWait.Add(1)
 		go func() {
-			defer cm.fetchWait.Done()
-			fetch.start()
+			f.start()
+			cm.fetchWait.Done()
 		}()
 	}
 	cm.fetchWait.Wait()
@@ -58,8 +58,8 @@ func (cm *CrawlManager) Stop() {
 	if !cm.started {
 		panic("Cannot stop a CrawlManager that has not been started")
 	}
-	for i := 0; i < len(cm.fetchers); i++ {
-		cm.fetchers[i].stop()
+	for _, f := range cm.fetchers {
+		go f.stop()
 	}
 	cm.fetchWait.Wait()
 }
