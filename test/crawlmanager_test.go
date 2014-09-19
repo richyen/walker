@@ -24,7 +24,7 @@ const norobots_page1 string = `<!DOCTYPE html>
 </div>
 </html>`
 
-func TestBasicCrawlManagerRun(t *testing.T) {
+func TestBasicFetchManagerRun(t *testing.T) {
 	ds := &MockDatastore{}
 	ds.On("ClaimNewHost").Return("norobots.com").Once()
 	ds.On("LinksForHost", "norobots.com").Return([]*walker.URL{
@@ -60,7 +60,7 @@ func TestBasicCrawlManagerRun(t *testing.T) {
 		Body: "User-agent: *\nCrawl-delay: 1\n",
 	})
 
-	manager := &walker.CrawlManager{}
+	manager := &walker.FetchManager{}
 	manager.SetDatastore(ds)
 	manager.AddHandler(h)
 	manager.Transport = GetFakeTransport()

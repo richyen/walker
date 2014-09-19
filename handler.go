@@ -8,7 +8,7 @@ import (
 )
 
 // Handler defines the interface for objects that will be set as handlers on a
-// CrawlManager.
+// FetchManager.
 type Handler interface {
 	// HandleResponse will be called by fetchers as they make requests.
 	// Handlers can do whatever they want with responses. HandleResponse will

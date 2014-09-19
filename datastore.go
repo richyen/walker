@@ -216,7 +216,7 @@ func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
 	ds.addDomainIfNew(domain)
 	err := ds.db.Query(`INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
 						VALUES (?, ?, ?, ?, ?)`,
-		domain, u.Subdomain(), u.RequestURI(), u.Scheme, Epoch).Exec()
+		domain, u.Subdomain(), u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
 	if err != nil {
 		log4go.Error("failed inserting parsed url (%v) to cassandra, %v", u, err)
 	}
