@@ -59,7 +59,7 @@ type CassandraDatastore struct {
 }
 
 func GetCassandraConfig() *gocql.ClusterConfig {
-	config := gocql.NewCluster(Config.Cassandra.Hosts[0])
+	config := gocql.NewCluster(Config.Cassandra.Hosts...)
 	config.Keyspace = Config.Cassandra.Keyspace
 	return config
 }
