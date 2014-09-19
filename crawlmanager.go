@@ -7,13 +7,13 @@ import (
 	"code.google.com/p/log4go"
 )
 
-// CrawlManager configures and runs the crawl.
+// FetchManager configures and runs the crawl.
 //
-// The calling code must create a CrawlManager, set a Datastore and handlers,
+// The calling code must create a FetchManager, set a Datastore and handlers,
 // then call `Start()`
-type CrawlManager struct {
+type FetchManager struct {
 	// Transport can be set to override the default network transport the
-	// CrawlManager is going to use. Good for faking remote servers for
+	// FetchManager is going to use. Good for faking remote servers for
 	// testing.
 	Transport http.RoundTripper
 	fetchers  []*fetcher
@@ -28,40 +28,40 @@ type CrawlManager struct {
 // other things)
 //
 // You cannot change the datastore or handlers after starting.
-func (cm *CrawlManager) Start() {
-	log4go.Info("Starting CrawlManager")
-	if cm.ds == nil {
-		panic("Cannot start a CrawlManager without a datastore")
+func (fm *FetchManager) Start() {
+	log4go.Info("Starting FetchManager")
+	if fm.ds == nil {
+		panic("Cannot start a FetchManager without a datastore")
 	}
-	if cm.started {
-		panic("Cannot start a CrawlManager multiple times")
+	if fm.started {
+		panic("Cannot start a FetchManager multiple times")
 	}
-	cm.started = true
+	fm.started = true
 	numFetchers := Config.NumSimultaneousFetchers
-	cm.fetchers = make([]*fetcher, numFetchers)
+	fm.fetchers = make([]*fetcher, numFetchers)
 	for i := 0; i < numFetchers; i++ {
-		f := newFetcher(cm)
-		cm.fetchers[i] = f
-		cm.fetchWait.Add(1)
+		f := newFetcher(fm)
+		fm.fetchers[i] = f
+		fm.fetchWait.Add(1)
 		go func() {
 			f.start()
-			cm.fetchWait.Done()
+			fm.fetchWait.Done()
 		}()
 	}
-	cm.fetchWait.Wait()
+	fm.fetchWait.Wait()
 }
 
 // Stop notifies the fetchers to finish their current requests. It blocks until
 // all fetchers have finished.
-func (cm *CrawlManager) Stop() {
-	log4go.Info("Stopping CrawlManager")
-	if !cm.started {
-		panic("Cannot stop a CrawlManager that has not been started")
+func (fm *FetchManager) Stop() {
+	log4go.Info("Stopping FetchManager")
+	if !fm.started {
+		panic("Cannot stop a FetchManager that has not been started")
 	}
-	for _, f := range cm.fetchers {
+	for _, f := range fm.fetchers {
 		go f.stop()
 	}
-	cm.fetchWait.Wait()
+	fm.fetchWait.Wait()
 }
 
 // AddHandler will cause the given handler to be called once for each fetch
@@ -70,20 +70,20 @@ func (cm *CrawlManager) Stop() {
 //
 // Every added handler will be called with every response (it is not a
 // multiplexer/pool to choose from).
-func (cm *CrawlManager) AddHandler(h Handler) {
+func (fm *FetchManager) AddHandler(h Handler) {
 	log4go.Info("Adding handler: %v", h)
-	if cm.started {
-		panic("You cannot add handlers to a CrawlManager after starting it")
+	if fm.started {
+		panic("You cannot add handlers to a FetchManager after starting it")
 	}
-	cm.handlers = append(cm.handlers, h)
+	fm.handlers = append(fm.handlers, h)
 }
 
-// SetDatastore assigns the datastore this CrawlManager should use. There must
+// SetDatastore assigns the datastore this FetchManager should use. There must
 // be exactly one of these and after starting the crawler it cannot be changed.
-func (cm *CrawlManager) SetDatastore(ds Datastore) {
+func (fm *FetchManager) SetDatastore(ds Datastore) {
 	log4go.Info("Setting Datastore: %v", ds)
-	if cm.started {
-		panic("You cannot set the CrawlManager datastore after starting it")
+	if fm.started {
+		panic("You cannot set the FetchManager datastore after starting it")
 	}
-	cm.ds = ds
+	fm.ds = ds
 }

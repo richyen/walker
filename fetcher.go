@@ -18,12 +18,12 @@ import (
 	"code.google.com/p/log4go"
 )
 
-// Epoch is a convenience for time.Unix(0, 0), used as the epoch time in
-// Walker, for example to indicate that a link has not been fetched yet.
-var Epoch time.Time
+// NotYetCrawled is a convenience for time.Unix(0, 0), used as a crawl time in
+// Walker for links that have not yet been fetched.
+var NotYetCrawled time.Time
 
 func init() {
-	Epoch = time.Unix(0, 0)
+	NotYetCrawled = time.Unix(0, 0)
 }
 
 // FetchResults contains all relevant context and return data from an
@@ -55,8 +55,8 @@ type FetchResults struct {
 }
 
 // URL is the walker URL object, which embeds *url.URL but has extra data and
-// capabilities used by walker. Note that LastCrawled should not be set to it's
-// zero value, it should be set to the Epoch.
+// capabilities used by walker. Note that LastCrawled should not be set to its
+// zero value, it should be set to NotYetCrawled.
 type URL struct {
 	*url.URL
 
@@ -88,7 +88,7 @@ func CreateURL(domain, subdomain, path, protocol string, lastcrawled time.Time) 
 // ParseURL is the walker.URL equivalent of url.Parse
 func ParseURL(ref string) (*URL, error) {
 	u, err := url.Parse(ref)
-	return &URL{URL: u, LastCrawled: Epoch}, err
+	return &URL{URL: u, LastCrawled: NotYetCrawled}, err
 }
 
 // ToplevelDomainPlusOne returns the Effective Toplevel Domain of this host as
@@ -119,7 +119,7 @@ func (u *URL) Subdomain() string {
 }
 
 type fetcher struct {
-	manager    *CrawlManager
+	manager    *FetchManager
 	host       string
 	httpclient *http.Client
 	robots     *robotstxt.Group
@@ -134,7 +134,7 @@ type fetcher struct {
 	done chan struct{}
 }
 
-func newFetcher(m *CrawlManager) *fetcher {
+func newFetcher(m *FetchManager) *fetcher {
 	f := new(fetcher)
 	f.manager = m
 	// Cache this globally?

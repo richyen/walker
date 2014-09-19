@@ -68,8 +68,8 @@ func TestDatastoreBasic(t *testing.T) {
 		db.Query(insertDomainToCrawl, "test.com", gocql.UUID{}, 0),
 		db.Query(insertSegment, "test.com", "", "page1.html", "http"),
 		db.Query(insertSegment, "test.com", "", "page2.html", "http"),
-		db.Query(insertLink, "test.com", "", "page1.html", "http", time.Unix(0, 0)),
-		db.Query(insertLink, "test.com", "", "page2.html", "http", time.Unix(0, 0)),
+		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.NotYetCrawled),
+		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.NotYetCrawled),
 	}
 	for _, q := range queries {
 		err := q.Exec()
@@ -156,7 +156,7 @@ func TestDatastoreBasic(t *testing.T) {
 	var crawl_time time.Time
 	results := map[url.URL]int{}
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time, &status) {
-		if !crawl_time.Equal(time.Unix(0, 0)) {
+		if !crawl_time.Equal(walker.NotYetCrawled) {
 			u, _ := walker.CreateURL(linkdomain, subdomain, path, protocol, crawl_time)
 			results[*u.URL] = status
 		}
@@ -214,7 +214,7 @@ func TestWalkerURL(t *testing.T) {
 	}
 
 	created, err := walker.CreateURL("test.com", "sub1", "thepath?query=blah", "http",
-		time.Unix(0, 0))
+		walker.NotYetCrawled)
 	if err != nil {
 		t.Fatal(err)
 	}

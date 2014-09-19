@@ -154,7 +154,7 @@ func (d *Dispatcher) generateSegment(domain string) error {
 			continue
 		}
 
-		if crawl_time.Equal(Epoch) {
+		if crawl_time.Equal(NotYetCrawled) {
 			if len(links) >= 500 {
 				// Stop here because we've moved on to a new link
 				log4go.Debug("Hit 500 links, not adding any more to the segment")
@@ -166,7 +166,7 @@ func (d *Dispatcher) generateSegment(domain string) error {
 		} else {
 			// This means we've already crawled the link, so leave it out
 			// Because we order by crawl_time we won't hit the link again
-			// later with crawl_time == Epoch
+			// later with crawl_time == NotYetCrawled
 
 			log4go.Debug("Link already crawled, removing from segment list: %#v", u)
 			delete(links, u.String())
@@ -203,7 +203,7 @@ func (d *Dispatcher) generateSegment(domain string) error {
 	//	log4go.Debug("Adding link to segment batch insert: %v", u)
 	//	batch.Query(`INSERT INTO segments (domain, subdomain, path, protocol, crawl_time)
 	//						VALUES (?, ?, ?, ?, ?)`,
-	//		u.Host, "", u.Path, u.Scheme, time.Unix(0, 0))
+	//		u.Host, "", u.Path, u.Scheme, NotYetCrawled)
 	//}
 	//log4go.Info("Inserting %v links in segment for %v", batch.Size()-1, domain)
 	//if err := d.db.ExecuteBatch(batch); err != nil {

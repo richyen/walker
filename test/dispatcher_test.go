@@ -24,12 +24,12 @@ func TestDispatcherBasic(t *testing.T) {
 
 	queries := []*gocql.Query{
 		db.Query(insertDomainInfo, "test.com"),
-		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.Epoch),
-		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.Epoch),
-		db.Query(insertLink, "test.com", "", "page404.html", "http", walker.Epoch),
-		db.Query(insertLink, "test.com", "", "page500.html", "http", walker.Epoch),
-		db.Query(insertLink, "test.com", "", "notcrawled1.html", "http", walker.Epoch),
-		db.Query(insertLink, "test.com", "", "notcrawled2.html", "http", walker.Epoch),
+		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.NotYetCrawled),
+		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.NotYetCrawled),
+		db.Query(insertLink, "test.com", "", "page404.html", "http", walker.NotYetCrawled),
+		db.Query(insertLink, "test.com", "", "page500.html", "http", walker.NotYetCrawled),
+		db.Query(insertLink, "test.com", "", "notcrawled1.html", "http", walker.NotYetCrawled),
+		db.Query(insertLink, "test.com", "", "notcrawled2.html", "http", walker.NotYetCrawled),
 		db.Query(insertLinkStatus, "test.com", "", "page1.html", "http", time.Now(), 200),
 		db.Query(insertLinkStatus, "test.com", "", "page2.html", "http", time.Now(), 200),
 		db.Query(insertLinkStatus, "test.com", "", "page404.html", "http", time.Now(), 404),
@@ -58,7 +58,7 @@ func TestDispatcherBasic(t *testing.T) {
 						FROM segments WHERE domain = 'test.com'`).Iter()
 	var linkdomain, subdomain, path, protocol string
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol) {
-		u, _ := walker.CreateURL(linkdomain, subdomain, path, protocol, walker.Epoch)
+		u, _ := walker.CreateURL(linkdomain, subdomain, path, protocol, walker.NotYetCrawled)
 		results[*u.URL] = true
 	}
 	if !reflect.DeepEqual(results, expectedResults) {

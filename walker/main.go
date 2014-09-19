@@ -35,7 +35,7 @@ func main() {
 
 			h := &walker.SimpleWriterHandler{}
 
-			manager := &walker.CrawlManager{}
+			manager := &walker.FetchManager{}
 			manager.SetDatastore(ds)
 			manager.AddHandler(h)
 			go manager.Start()
