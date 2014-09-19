@@ -27,7 +27,7 @@ type Dispatcher struct {
 	db *gocql.Session
 
 	domains chan string    // For passing domains to generate to worker goroutines
-	quit    chan bool      // Channel to close to stop the dispatcher (used by `Stop()`)
+	quit    chan struct{}  // Channel to close to stop the dispatcher (used by `Stop()`)
 	wg      sync.WaitGroup // WaitGroup for the generator goroutines
 }
 
@@ -41,7 +41,7 @@ func (d *Dispatcher) Start() error {
 		return fmt.Errorf("Failed to create cassandra session: %v", err)
 	}
 
-	d.quit = make(chan bool)
+	d.quit = make(chan struct{})
 	d.domains = make(chan string)
 
 	//TODO: add Concurrency to config

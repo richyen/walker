@@ -48,8 +48,11 @@ func (cm *CrawlManager) Start() {
 			fetch.start()
 		}()
 	}
+	cm.fetchWait.Wait()
 }
 
+// Stop notifies the fetchers to finish their current requests. It blocks until
+// all fetchers have finished.
 func (cm *CrawlManager) Stop() {
 	log4go.Info("Stopping CrawlManager")
 	if !cm.started {
