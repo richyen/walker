@@ -91,6 +91,12 @@ func ParseURL(ref string) (*URL, error) {
 	return &URL{URL: u, LastCrawled: Epoch}, err
 }
 
+// ToplevelDomainPlusOne returns the Effective Toplevel Domain of this host as
+// defined by https://publicsuffix.org/, plus one extra domain component.
+//
+// For example the TLD of http://www.bbc.co.uk/ is 'co.uk', plus one is
+// 'bbc.co.uk'. Walker uses these TLD+1 domains as the primary unit of
+// grouping.
 func (u *URL) ToplevelDomainPlusOne() string {
 	domain, err := publicsuffix.EffectiveTLDPlusOne(u.Host)
 	if err != nil {
@@ -100,6 +106,10 @@ func (u *URL) ToplevelDomainPlusOne() string {
 	return domain
 }
 
+// Subdomain provides the remaining subdomain after removing the
+// ToplevelDomainPlusOne. For example http://www.bbc.co.uk/ will return 'www'
+// as the subdomain (note that there is no trailing period). If there is no
+// subdomain it will return "".
 func (u *URL) Subdomain() string {
 	tld := u.ToplevelDomainPlusOne()
 	if len(u.Host) == len(tld) {
@@ -112,35 +122,47 @@ type fetcher struct {
 	manager    *CrawlManager
 	host       string
 	httpclient *http.Client
-	quit       chan bool
 	robots     *robotstxt.Group
 	crawldelay time.Duration
+
+	// quit signals the fetcher to stop
+	quit chan struct{}
+
+	// done receives when the fetcher has finished; this is necessary because
+	// the fetcher may need to clean up (ex. unclaim the current host) after
+	// reading from quit
+	done chan struct{}
 }
 
 func newFetcher(m *CrawlManager) *fetcher {
 	f := new(fetcher)
 	f.manager = m
+	// Cache this globally?
 	f.httpclient = &http.Client{
 		Transport: m.Transport,
 	}
-	f.quit = make(chan bool)
+	f.quit = make(chan struct{})
+	f.done = make(chan struct{})
 	return f
 }
 
+// start blocks until the fetcher has completed by being told to quit.
 func (f *fetcher) start() {
 	log4go.Debug("Starting new fetcher")
 	for {
-		select {
-		case <-f.quit:
-			return
-		default:
-		}
-
 		if f.host != "" {
 			//TODO: ensure that this unclaim will happen... probably want the
 			//logic below in a function where the Unclaim is deferred
 			f.manager.ds.UnclaimHost(f.host)
 		}
+
+		select {
+		case <-f.quit:
+			f.done <- struct{}{}
+			return
+		default:
+		}
+
 		f.host = f.manager.ds.ClaimNewHost()
 		if f.host == "" {
 			time.Sleep(time.Second)
@@ -215,8 +237,10 @@ func (f *fetcher) start() {
 	}
 }
 
+// stop signals a fetcher to stop and waits until completion.
 func (f *fetcher) stop() {
-	f.quit <- true
+	f.quit <- struct{}{}
+	<-f.done
 }
 
 func (f *fetcher) fetchRobots(host string) {

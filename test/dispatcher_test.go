@@ -43,14 +43,9 @@ func TestDispatcherBasic(t *testing.T) {
 	}
 
 	d := &walker.Dispatcher{}
-	done := make(chan bool)
-	go func() {
-		d.Start()
-		done <- true
-	}()
+	go d.Start()
 	time.Sleep(time.Second)
 	d.Stop()
-	<-done
 
 	url1 := parse("http://test.com/notcrawled1.html")
 	url2 := parse("http://test.com/notcrawled2.html")

@@ -38,17 +38,14 @@ func main() {
 			manager := &walker.CrawlManager{}
 			manager.SetDatastore(ds)
 			manager.AddHandler(h)
-			managerDone := make(chan bool)
-			go func() {
-				manager.Start()
-				managerDone <- true
-			}()
+			go manager.Start()
 
 			dispatcher := &walker.Dispatcher{}
-			dispatcherDone := make(chan bool)
 			go func() {
-				dispatcher.Start()
-				dispatcherDone <- true
+				err := dispatcher.Start()
+				if err != nil {
+					panic(err.Error())
+				}
 			}()
 
 			sig := make(chan os.Signal)
@@ -57,8 +54,6 @@ func main() {
 
 			dispatcher.Stop()
 			manager.Stop()
-			<-dispatcherDone
-			<-managerDone
 		},
 	}
 	walkerCommand.AddCommand(crawlCommand)
