@@ -60,10 +60,11 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		Body: "User-agent: *\nCrawl-delay: 1\n",
 	})
 
-	manager := &walker.FetchManager{}
-	manager.SetDatastore(ds)
-	manager.AddHandler(h)
-	manager.Transport = GetFakeTransport()
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+		Transport: GetFakeTransport(),
+	}
 
 	go manager.Start()
 	time.Sleep(time.Second * 3)

@@ -119,7 +119,7 @@ func (u *URL) Subdomain() string {
 }
 
 type fetcher struct {
-	manager    *FetchManager
+	fm         *FetchManager
 	host       string
 	httpclient *http.Client
 	robots     *robotstxt.Group
@@ -134,12 +134,12 @@ type fetcher struct {
 	done chan struct{}
 }
 
-func newFetcher(m *FetchManager) *fetcher {
+func newFetcher(fm *FetchManager) *fetcher {
 	f := new(fetcher)
-	f.manager = m
+	f.fm = fm
 	// Cache this globally?
 	f.httpclient = &http.Client{
-		Transport: m.Transport,
+		Transport: fm.Transport,
 	}
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})
@@ -153,7 +153,7 @@ func (f *fetcher) start() {
 		if f.host != "" {
 			//TODO: ensure that this unclaim will happen... probably want the
 			//logic below in a function where the Unclaim is deferred
-			f.manager.ds.UnclaimHost(f.host)
+			f.fm.Datastore.UnclaimHost(f.host)
 		}
 
 		select {
@@ -163,7 +163,7 @@ func (f *fetcher) start() {
 		default:
 		}
 
-		f.host = f.manager.ds.ClaimNewHost()
+		f.host = f.fm.Datastore.ClaimNewHost()
 		if f.host == "" {
 			time.Sleep(time.Second)
 			continue
@@ -176,7 +176,7 @@ func (f *fetcher) start() {
 		}
 		log4go.Debug("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
 
-		for link := range f.manager.ds.LinksForHost(f.host) {
+		for link := range f.fm.Datastore.LinksForHost(f.host) {
 
 			//TODO: check <-f.quit and clean up appropriately
 
@@ -184,7 +184,7 @@ func (f *fetcher) start() {
 
 			if f.robots != nil && !f.robots.Test(link.String()) {
 				fr.ExcludedByRobots = true
-				f.manager.ds.StoreURLFetchResults(fr)
+				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
 
@@ -194,23 +194,23 @@ func (f *fetcher) start() {
 			fr.Res, fr.FetchError = f.fetch(link)
 			if fr.FetchError != nil {
 				log4go.Debug("Error fetching %v: %v", link, fr.FetchError)
-				f.manager.ds.StoreURLFetchResults(fr)
+				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
 
 			//TODO: limit to reading Config.MaxHTTPContentSizeBytes
+			//TODO: use a properly sized buffer from the outset
 			fr.Contents, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
 			if fr.FetchError != nil {
 				log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
-				f.manager.ds.StoreURLFetchResults(fr)
+				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
 
 			log4go.Debug("Fetched %v -- %v", link, fr.Res.Status)
-			f.manager.ds.StoreURLFetchResults(fr)
-			for _, h := range f.manager.handlers {
-				h.HandleResponse(fr)
-			}
+			f.fm.Handler.HandleResponse(fr)
+			f.fm.Datastore.StoreURLFetchResults(fr)
+			//Wrap the reader and check for read error here?
 
 			//TODO: check for other types based on config
 			if isHTML(fr) {
@@ -228,7 +228,7 @@ func (f *fetcher) start() {
 						outlink.Host = link.Host
 					}
 					log4go.Debug("Parsed link: %v", outlink)
-					f.manager.ds.StoreParsedURL(outlink, fr)
+					f.fm.Datastore.StoreParsedURL(outlink, fr)
 				}
 			} else {
 				log4go.Debug("Not parsing due to content type: %v", fr.Res.Header["Content-Type"])
