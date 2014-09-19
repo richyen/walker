@@ -3,6 +3,7 @@
 package test
 
 import (
+	"io/ioutil"
 	"testing"
 	"time"
 
@@ -76,9 +77,10 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		fr := call.Arguments.Get(0).(*walker.FetchResults)
 		switch fr.Url.String() {
 		case "http://norobots.com/page1.html":
-			if string(fr.Contents) != norobots_page1 {
+			contents, _ := ioutil.ReadAll(fr.Res.Body)
+			if string(contents) != norobots_page1 {
 				t.Errorf("For %v, expected:\n%v\n\nBut got:\n%v\n",
-					fr.Url, norobots_page1, string(fr.Contents))
+					fr.Url, norobots_page1, string(contents))
 			}
 		case "http://norobots.com/page2.html":
 		case "http://norobots.com/page3.html":

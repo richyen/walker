@@ -99,7 +99,6 @@ func TestDatastoreBasic(t *testing.T) {
 
 	page1Fetch := &walker.FetchResults{
 		Url:       page1URL,
-		Contents:  []byte("<html>stuff</html>"),
 		FetchTime: time.Now(),
 		Res: &http.Response{
 			Status:        "200 OK",
@@ -121,7 +120,6 @@ func TestDatastoreBasic(t *testing.T) {
 	}
 	page2Fetch := &walker.FetchResults{
 		Url:       page2URL,
-		Contents:  []byte("<html>stuff</html>"),
 		FetchTime: time.Now(),
 		Res: &http.Response{
 			Status:        "200 OK",

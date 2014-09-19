@@ -1,6 +1,7 @@
 package test
 
 import (
+	"bytes"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -16,7 +17,6 @@ func TestSimpleWriterHandler(t *testing.T) {
 	page1Contents := []byte("<html>stuff</html>")
 	page1Fetch := &walker.FetchResults{
 		Url:              page1URL,
-		Contents:         page1Contents,
 		ExcludedByRobots: false,
 		Res: &http.Response{
 			Status:        "200 OK",
@@ -25,6 +25,7 @@ func TestSimpleWriterHandler(t *testing.T) {
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 18,
+			Body:          ioutil.NopCloser(bytes.NewReader(page1Contents)),
 			Request: &http.Request{
 				Method:        "GET",
 				URL:           page1URL.URL,
@@ -57,7 +58,6 @@ func TestSimpleWriterHandlerIgnoresOnRobots(t *testing.T) {
 	page2Contents := []byte("<html>stuff</html>")
 	page2Fetch := &walker.FetchResults{
 		Url:              page2URL,
-		Contents:         page2Contents,
 		ExcludedByRobots: true,
 		Res: &http.Response{
 			Status:        "200 OK",
@@ -66,6 +66,7 @@ func TestSimpleWriterHandlerIgnoresOnRobots(t *testing.T) {
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 18,
+			Body:          ioutil.NopCloser(bytes.NewReader(page2Contents)),
 			Request: &http.Request{
 				Method:        "GET",
 				URL:           page2URL.URL,
@@ -93,7 +94,6 @@ func TestSimpleWriterHandlerIgnoresBadHTTPCode(t *testing.T) {
 	page3Contents := []byte("<html>stuff</html>")
 	page3Fetch := &walker.FetchResults{
 		Url:              page3URL,
-		Contents:         page3Contents,
 		ExcludedByRobots: false,
 		Res: &http.Response{
 			Status:        "404 NOT FOUND",
@@ -102,6 +102,7 @@ func TestSimpleWriterHandlerIgnoresBadHTTPCode(t *testing.T) {
 			ProtoMajor:    1,
 			ProtoMinor:    1,
 			ContentLength: 18,
+			Body:          ioutil.NopCloser(bytes.NewReader(page3Contents)),
 			Request: &http.Request{
 				Method:        "GET",
 				URL:           page3URL.URL,

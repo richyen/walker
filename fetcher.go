@@ -33,14 +33,10 @@ type FetchResults struct {
 	Url *URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
-	// true. Response.Body will be read and closed internally by walker; to get
-	// the content use `FetchResults.Contents`
+	// true. Response.Body may not be the same object the HTTP request actually
+	// returns; the fetcher may have read in the response to parse out links,
+	// replacing Response.Body with an alternate reader.
 	Res *http.Response
-
-	// Contents is Response.Body read into a []byte. This should be used by
-	// Handlers etc. instead of Response.Body, which walker will read and close
-	// internally.
-	Contents []byte
 
 	// FetchError if the net/http request had an error (non-2XX HTTP response
 	// codes are not considered errors)
@@ -198,41 +194,45 @@ func (f *fetcher) start() {
 				continue
 			}
 
-			//TODO: limit to reading Config.MaxHTTPContentSizeBytes
-			//TODO: use a properly sized buffer from the outset
-			fr.Contents, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
-			if fr.FetchError != nil {
-				log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
-				f.fm.Datastore.StoreURLFetchResults(fr)
-				continue
-			}
-
 			log4go.Debug("Fetched %v -- %v", link, fr.Res.Status)
-			f.fm.Handler.HandleResponse(fr)
-			f.fm.Datastore.StoreURLFetchResults(fr)
-			//Wrap the reader and check for read error here?
 
-			//TODO: check for other types based on config
-			if isHTML(fr) {
-				log4go.Debug("Parsing as HTML")
-				outlinks, err := getLinks(fr.Contents)
-				if err != nil {
-					log4go.Warn("error parsing HTML for page %v: %v", link, err)
+			if isHTML(fr.Res) {
+				log4go.Debug("Reading and parsing as HTML (%v)", link)
+
+				//TODO: ReadAll is inefficient. We should use a properly sized
+				//		buffer here (determined by
+				//		Config.MaxHTTPContentSizeBytes or possibly
+				//		Content-Length of the response)
+				var body []byte
+				body, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
+				if fr.FetchError != nil {
+					log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
+					f.fm.Datastore.StoreURLFetchResults(fr)
 					continue
 				}
-				for _, outlink := range outlinks {
-					if outlink.Scheme == "" {
-						outlink.Scheme = link.Scheme
+				fr.Res.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+				outlinks, err := getLinks(body)
+				if err != nil {
+					log4go.Warn("error parsing HTML for page %v: %v", link, err)
+				} else {
+					for _, outlink := range outlinks {
+						if outlink.Scheme == "" {
+							outlink.Scheme = link.Scheme
+						}
+						if outlink.Host == "" {
+							outlink.Host = link.Host
+						}
+						log4go.Debug("Parsed link: %v", outlink)
+						f.fm.Datastore.StoreParsedURL(outlink, fr)
 					}
-					if outlink.Host == "" {
-						outlink.Host = link.Host
-					}
-					log4go.Debug("Parsed link: %v", outlink)
-					f.fm.Datastore.StoreParsedURL(outlink, fr)
 				}
-			} else {
-				log4go.Debug("Not parsing due to content type: %v", fr.Res.Header["Content-Type"])
 			}
+
+			f.fm.Handler.HandleResponse(fr)
+			//TODO: Wrap the reader and check for read error here
+			f.fm.Datastore.StoreURLFetchResults(fr)
+
 		}
 	}
 }
@@ -354,9 +354,12 @@ func parseAnchorAttrs(tokenizer *html.Tokenizer, links []*URL) []*URL {
 	}
 }
 
-func isHTML(fr *FetchResults) bool {
-	for _, contenttype := range fr.Res.Header["Content-Type"] {
-		if strings.HasPrefix(contenttype, "text/html") {
+func isHTML(r *http.Response) bool {
+	if r == nil {
+		return false
+	}
+	for _, ct := range r.Header["Content-Type"] {
+		if strings.HasPrefix(ct, "text/html") {
 			return true
 		}
 	}

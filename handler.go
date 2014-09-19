@@ -1,6 +1,7 @@
 package walker
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 
@@ -50,7 +51,7 @@ func (h *SimpleWriterHandler) HandleResponse(res *FetchResults) {
 			log4go.Error(err.Error())
 		}
 	}()
-	_, err = out.Write(res.Contents)
+	_, err = io.Copy(out, res.Res.Body)
 	if err != nil {
 		log4go.Error(err.Error())
 		return
