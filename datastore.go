@@ -59,8 +59,8 @@ type CassandraDatastore struct {
 
 	// A group of domains that this datastore has already claimed, ready to
 	// pass to a fetcher
-	domains    []string
-	domainsMux sync.Mutex
+	domains []string
+	mu      sync.Mutex
 }
 
 func GetCassandraConfig() *gocql.ClusterConfig {
@@ -96,8 +96,8 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 	//}
 	//sort.Sort(sort.Reverse(sort.IntSlice(priorities)))
 
-	ds.domainsMux.Lock()
-	defer ds.domainsMux.Unlock()
+	ds.mu.Lock()
+	defer ds.mu.Unlock()
 
 	if len(ds.domains) == 0 {
 		// Start with the highest priority selecting until we find an unclaimed domain segment,
