@@ -33,11 +33,10 @@ func main() {
 				fatalf("Failed creating Cassandra datastore: %v", err)
 			}
 
-			h := &walker.SimpleWriterHandler{}
-
-			manager := &walker.FetchManager{}
-			manager.SetDatastore(ds)
-			manager.AddHandler(h)
+			manager := &walker.FetchManager{
+				Datastore: ds,
+				Handler:   &walker.SimpleWriterHandler{},
+			}
 			go manager.Start()
 
 			dispatcher := &walker.Dispatcher{}

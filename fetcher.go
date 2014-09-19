@@ -33,14 +33,10 @@ type FetchResults struct {
 	Url *URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
-	// true. Response.Body will be read and closed internally by walker; to get
-	// the content use `FetchResults.Contents`
+	// true. Response.Body may not be the same object the HTTP request actually
+	// returns; the fetcher may have read in the response to parse out links,
+	// replacing Response.Body with an alternate reader.
 	Res *http.Response
-
-	// Contents is Response.Body read into a []byte. This should be used by
-	// Handlers etc. instead of Response.Body, which walker will read and close
-	// internally.
-	Contents []byte
 
 	// FetchError if the net/http request had an error (non-2XX HTTP response
 	// codes are not considered errors)
@@ -119,7 +115,7 @@ func (u *URL) Subdomain() string {
 }
 
 type fetcher struct {
-	manager    *FetchManager
+	fm         *FetchManager
 	host       string
 	httpclient *http.Client
 	robots     *robotstxt.Group
@@ -134,12 +130,12 @@ type fetcher struct {
 	done chan struct{}
 }
 
-func newFetcher(m *FetchManager) *fetcher {
+func newFetcher(fm *FetchManager) *fetcher {
 	f := new(fetcher)
-	f.manager = m
+	f.fm = fm
 	// Cache this globally?
 	f.httpclient = &http.Client{
-		Transport: m.Transport,
+		Transport: fm.Transport,
 	}
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})
@@ -153,7 +149,7 @@ func (f *fetcher) start() {
 		if f.host != "" {
 			//TODO: ensure that this unclaim will happen... probably want the
 			//logic below in a function where the Unclaim is deferred
-			f.manager.ds.UnclaimHost(f.host)
+			f.fm.Datastore.UnclaimHost(f.host)
 		}
 
 		select {
@@ -163,7 +159,7 @@ func (f *fetcher) start() {
 		default:
 		}
 
-		f.host = f.manager.ds.ClaimNewHost()
+		f.host = f.fm.Datastore.ClaimNewHost()
 		if f.host == "" {
 			time.Sleep(time.Second)
 			continue
@@ -176,7 +172,7 @@ func (f *fetcher) start() {
 		}
 		log4go.Debug("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
 
-		for link := range f.manager.ds.LinksForHost(f.host) {
+		for link := range f.fm.Datastore.LinksForHost(f.host) {
 
 			//TODO: check <-f.quit and clean up appropriately
 
@@ -184,7 +180,7 @@ func (f *fetcher) start() {
 
 			if f.robots != nil && !f.robots.Test(link.String()) {
 				fr.ExcludedByRobots = true
-				f.manager.ds.StoreURLFetchResults(fr)
+				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
 
@@ -194,45 +190,49 @@ func (f *fetcher) start() {
 			fr.Res, fr.FetchError = f.fetch(link)
 			if fr.FetchError != nil {
 				log4go.Debug("Error fetching %v: %v", link, fr.FetchError)
-				f.manager.ds.StoreURLFetchResults(fr)
-				continue
-			}
-
-			//TODO: limit to reading Config.MaxHTTPContentSizeBytes
-			fr.Contents, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
-			if fr.FetchError != nil {
-				log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
-				f.manager.ds.StoreURLFetchResults(fr)
+				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
 
 			log4go.Debug("Fetched %v -- %v", link, fr.Res.Status)
-			f.manager.ds.StoreURLFetchResults(fr)
-			for _, h := range f.manager.handlers {
-				h.HandleResponse(fr)
-			}
 
-			//TODO: check for other types based on config
-			if isHTML(fr) {
-				log4go.Debug("Parsing as HTML")
-				outlinks, err := getLinks(fr.Contents)
-				if err != nil {
-					log4go.Warn("error parsing HTML for page %v: %v", link, err)
+			if isHTML(fr.Res) {
+				log4go.Debug("Reading and parsing as HTML (%v)", link)
+
+				//TODO: ReadAll is inefficient. We should use a properly sized
+				//		buffer here (determined by
+				//		Config.MaxHTTPContentSizeBytes or possibly
+				//		Content-Length of the response)
+				var body []byte
+				body, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
+				if fr.FetchError != nil {
+					log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
+					f.fm.Datastore.StoreURLFetchResults(fr)
 					continue
 				}
-				for _, outlink := range outlinks {
-					if outlink.Scheme == "" {
-						outlink.Scheme = link.Scheme
+				fr.Res.Body = ioutil.NopCloser(bytes.NewReader(body))
+
+				outlinks, err := getLinks(body)
+				if err != nil {
+					log4go.Warn("error parsing HTML for page %v: %v", link, err)
+				} else {
+					for _, outlink := range outlinks {
+						if outlink.Scheme == "" {
+							outlink.Scheme = link.Scheme
+						}
+						if outlink.Host == "" {
+							outlink.Host = link.Host
+						}
+						log4go.Debug("Parsed link: %v", outlink)
+						f.fm.Datastore.StoreParsedURL(outlink, fr)
 					}
-					if outlink.Host == "" {
-						outlink.Host = link.Host
-					}
-					log4go.Debug("Parsed link: %v", outlink)
-					f.manager.ds.StoreParsedURL(outlink, fr)
 				}
-			} else {
-				log4go.Debug("Not parsing due to content type: %v", fr.Res.Header["Content-Type"])
 			}
+
+			f.fm.Handler.HandleResponse(fr)
+			//TODO: Wrap the reader and check for read error here
+			f.fm.Datastore.StoreURLFetchResults(fr)
+
 		}
 	}
 }
@@ -354,9 +354,12 @@ func parseAnchorAttrs(tokenizer *html.Tokenizer, links []*URL) []*URL {
 	}
 }
 
-func isHTML(fr *FetchResults) bool {
-	for _, contenttype := range fr.Res.Header["Content-Type"] {
-		if strings.HasPrefix(contenttype, "text/html") {
+func isHTML(r *http.Response) bool {
+	if r == nil {
+		return false
+	}
+	for _, ct := range r.Header["Content-Type"] {
+		if strings.HasPrefix(ct, "text/html") {
 			return true
 		}
 	}
