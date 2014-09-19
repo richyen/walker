@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -53,9 +54,13 @@ type Datastore interface {
 // CassandraDatastore is the primary Datastore implementation, using Apache
 // Cassandra as a highly scalable backend.
 type CassandraDatastore struct {
-	cf            *gocql.ClusterConfig
-	db            *gocql.Session
-	cachedDomains []string
+	cf *gocql.ClusterConfig
+	db *gocql.Session
+
+	// A group of domains that this datastore has already claimed, ready to
+	// pass to a fetcher
+	domains    []string
+	domainsMux sync.Mutex
 }
 
 func GetCassandraConfig() *gocql.ClusterConfig {
@@ -79,7 +84,7 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 func (ds *CassandraDatastore) ClaimNewHost() string {
 
 	// Get our range of priority values and sort high to low
-	// Currently simplified to one level top optimize fake crawler
+	// Currently simplified to one level
 	priorities := []int{0}
 
 	//priorities := []int{}
@@ -91,7 +96,10 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 	//}
 	//sort.Sort(sort.Reverse(sort.IntSlice(priorities)))
 
-	if len(ds.cachedDomains) == 0 {
+	ds.domainsMux.Lock()
+	defer ds.domainsMux.Unlock()
+
+	if len(ds.domains) == 0 {
 		// Start with the highest priority selecting until we find an unclaimed domain segment,
 		// then claim it
 		start := time.Now()
@@ -105,7 +113,7 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 			for domain_iter.Scan(&domain) {
 				//TODO: use lightweight transaction to allow more crawlers
 				//TODO: use a per-crawler uuid
-				log4go.Info("ClaimNextDomain selected new domain in %v", time.Since(start))
+				log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
 				start = time.Now()
 				crawluuid, _ := gocql.RandomUUID()
 				err := ds.db.Query(`UPDATE domains_to_crawl SET crawler_token = ?, claim_time = ?
@@ -115,21 +123,21 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 					log4go.Error("Failed to claim segment %v: %v", domain, err)
 				} else {
 					log4go.Info("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
-					ds.cachedDomains = append(ds.cachedDomains, domain)
+					ds.domains = append(ds.domains, domain)
 				}
 			}
 		}
 	}
 
-	if len(ds.cachedDomains) > 0 {
-		// Pop the last element and return it
-		lastIndex := len(ds.cachedDomains) - 1
-		domain := ds.cachedDomains[lastIndex]
-		ds.cachedDomains = ds.cachedDomains[:lastIndex]
-		return domain
-	} else {
+	if len(ds.domains) == 0 {
 		return ""
 	}
+
+	// Pop the last element and return it
+	lastIndex := len(ds.domains) - 1
+	domain := ds.domains[lastIndex]
+	ds.domains = ds.domains[:lastIndex]
+	return domain
 }
 
 func (ds *CassandraDatastore) UnclaimHost(host string) {
@@ -224,6 +232,7 @@ func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
 
 // addDomainIfNew expects a toplevel domain, no subdomain
 func (ds *CassandraDatastore) addDomainIfNew(domain string) {
+	//TODO: insert cache here
 	var count int
 	err := ds.db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
 	if err != nil {
