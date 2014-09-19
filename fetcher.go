@@ -264,7 +264,7 @@ func (f *fetcher) fetchRobots(host string) {
 		f.robots = nil
 		return
 	}
-	f.robots = robots.FindGroup("Turnitinbot")
+	f.robots = robots.FindGroup(Config.UserAgent)
 }
 
 func (f *fetcher) fetch(u *URL) (*http.Response, error) {
