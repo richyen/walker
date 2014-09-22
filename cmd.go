@@ -24,7 +24,14 @@ import (
 //			walker.Cmd.Execute()
 //		}
 //
-// The Datastore and Dispatcher can be similarly overridded.
+// Likewise if you want to set your own Datastore and Dispatcher:
+//
+//		func main() {
+//			walker.Cmd.Datastore = NewMyDatastore()
+//			walker.Cmd.Dispatcher = NewMyDatastore()
+//			walker.Cmd.Execute()
+//		}
+//
 // walker.Cmd.Execute() blocks until the program has completed (usually by
 // being shutdown gracefully via SIGINT).
 var Cmd struct {
