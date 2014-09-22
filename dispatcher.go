@@ -10,19 +10,33 @@ import (
 	"github.com/gocql/gocql"
 )
 
-// Dispatcher analyzes what we've crawled so far (generally on a per-domain
+// Dispatcher defines the calls a dispatcher should respond to. A dispatcher
+// would typically be paired with a particular Datastore, and not all Datastore
+// implementations may need a Dispatcher.
+//
+// A basic crawl will likely run the dispatcher in the same process as the
+// fetchers, but higher-scale crawl setups may run dispatchers separately.
+type Dispatcher interface {
+	// StartDispatcher should be a blocking call that starts the dispatcher. It
+	// should return an error if it could not start or stop properly and nil
+	// when it has safely shut down and stopped all internal processing.
+	StartDispatcher() error
+
+	// Stop signals the dispatcher to stop. It should block until all internal
+	// goroutines have stopped.
+	StopDispatcher() error
+}
+
+// CassandraDispatcher analyzes what we've crawled so far (generally on a per-domain
 // basis) and updates the database. At minimum this means generating new
 // segments to crawl in the `segments` table, but it can also mean updating
 // domain_info if we find out new things about a domain.
 //
 // This dispatcher has been designed to run simultaneously with the
-// crawlmanager. Crawlers and dispatchers claim domains in Cassandra, so the
+// fetchmanager. Fetchers and dispatchers claim domains in Cassandra, so the
 // dispatcher can operate on the domains not currently being crawled (and vice
 // versa).
-//
-// This dispatcher works with the CassandraDatastore; not all datastores that
-// could be implemented will need a separate dispatcher piece.
-type Dispatcher struct {
+type CassandraDispatcher struct {
 	cf *gocql.ClusterConfig
 	db *gocql.Session
 
@@ -31,9 +45,7 @@ type Dispatcher struct {
 	wg      sync.WaitGroup // WaitGroup for the generator goroutines
 }
 
-// Start is a blocking call that starts the dispatching. I will return an error
-// if it could not start, and returns nil when it has been signaled to stop.
-func (d *Dispatcher) Start() error {
+func (d *CassandraDispatcher) StartDispatcher() error {
 	d.cf = GetCassandraConfig()
 	var err error
 	d.db, err = d.cf.CreateSession()
@@ -58,15 +70,14 @@ func (d *Dispatcher) Start() error {
 	return nil
 }
 
-// Stop signals the dispatcher to stop and blocks until all internal goroutines
-// have stopped.
-func (d *Dispatcher) Stop() {
+func (d *CassandraDispatcher) StopDispatcher() error {
 	close(d.quit)
 	d.wg.Wait()
 	d.db.Close()
+	return nil
 }
 
-func (d *Dispatcher) domainIterator() {
+func (d *CassandraDispatcher) domainIterator() {
 	for {
 		log4go.Info("Starting new domain iteration")
 		domainiter := d.db.Query(`SELECT domain FROM domain_info`).Iter()
@@ -102,7 +113,7 @@ func (d *Dispatcher) domainIterator() {
 	}
 }
 
-func (d *Dispatcher) generateRoutine() {
+func (d *CassandraDispatcher) generateRoutine() {
 	for domain := range d.domains {
 		scheduled, err := d.domainAlreadyScheduled(domain)
 		if err != nil {
@@ -123,7 +134,7 @@ func (d *Dispatcher) generateRoutine() {
 
 // domainAlreadyScheduled verifies that this domain isn't already in
 // domains_to_crawl
-func (d *Dispatcher) domainAlreadyScheduled(domain string) (bool, error) {
+func (d *CassandraDispatcher) domainAlreadyScheduled(domain string) (bool, error) {
 	var count int
 	err := d.db.Query(`SELECT COUNT(*) FROM domains_to_crawl
 						WHERE domain = ? ALLOW FILTERING`, domain).Scan(&count)
@@ -139,7 +150,7 @@ func (d *Dispatcher) domainAlreadyScheduled(domain string) (bool, error) {
 //
 // This implementation is dumb, we're just scheduling the first 500 links we
 // haven't crawled yet. We never recrawl.
-func (d *Dispatcher) generateSegment(domain string) error {
+func (d *CassandraDispatcher) generateSegment(domain string) error {
 	log4go.Info("Generating a crawl segment for %v", domain)
 	iter := d.db.Query(`SELECT domain, subdomain, path, protocol, crawl_time
 						FROM links WHERE domain = ?

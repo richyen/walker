@@ -42,10 +42,10 @@ func TestDispatcherBasic(t *testing.T) {
 		}
 	}
 
-	d := &walker.Dispatcher{}
-	go d.Start()
+	d := &walker.CassandraDispatcher{}
+	go d.StartDispatcher()
 	time.Sleep(time.Second)
-	d.Stop()
+	d.StopDispatcher()
 
 	url1 := parse("http://test.com/notcrawled1.html")
 	url2 := parse("http://test.com/notcrawled2.html")
