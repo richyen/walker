@@ -14,12 +14,12 @@ type MockDatastore struct {
 	mock.Mock
 }
 
-func (ds *MockDatastore) StoreParsedURL(u *walker.URL, res *walker.FetchResults) {
-	ds.Mock.Called(u, res)
+func (ds *MockDatastore) StoreParsedURL(u *walker.URL, fr *walker.FetchResults) {
+	ds.Mock.Called(u, fr)
 }
 
-func (ds *MockDatastore) StoreURLFetchResults(res *walker.FetchResults) {
-	ds.Mock.Called(res)
+func (ds *MockDatastore) StoreURLFetchResults(fr *walker.FetchResults) {
+	ds.Mock.Called(fr)
 }
 
 func (ds *MockDatastore) ClaimNewHost() string {
@@ -47,8 +47,8 @@ type MockHandler struct {
 	mock.Mock
 }
 
-func (h *MockHandler) HandleResponse(res *walker.FetchResults) {
-	h.Mock.Called(res)
+func (h *MockHandler) HandleResponse(fr *walker.FetchResults) {
+	h.Mock.Called(fr)
 }
 
 // MockResponse is the source object used to build fake responses in

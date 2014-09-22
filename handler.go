@@ -23,17 +23,17 @@ type Handler interface {
 // file after the URL of the request.
 type SimpleWriterHandler struct{}
 
-func (h *SimpleWriterHandler) HandleResponse(res *FetchResults) {
-	if res.ExcludedByRobots {
-		log4go.Debug("Excluded by robots.txt, ignoring url: %v", res.Url)
+func (h *SimpleWriterHandler) HandleResponse(fr *FetchResults) {
+	if fr.ExcludedByRobots {
+		log4go.Debug("Excluded by robots.txt, ignoring url: %v", fr.URL)
 		return
 	}
-	if res.Res.StatusCode < 200 || res.Res.StatusCode >= 300 {
-		log4go.Debug("Returned %v ignoring url: %v", res.Res.StatusCode, res.Url)
+	if fr.Response.StatusCode < 200 || fr.Response.StatusCode >= 300 {
+		log4go.Debug("Returned %v ignoring url: %v", fr.Response.StatusCode, fr.URL)
 		return
 	}
 
-	path := filepath.Join(res.Url.Host, res.Url.RequestURI())
+	path := filepath.Join(fr.URL.Host, fr.URL.RequestURI())
 	dir, _ := filepath.Split(path)
 	if err := os.MkdirAll(dir, 0777); err != nil {
 		log4go.Error(err.Error())
@@ -51,7 +51,7 @@ func (h *SimpleWriterHandler) HandleResponse(res *FetchResults) {
 			log4go.Error(err.Error())
 		}
 	}()
-	_, err = io.Copy(out, res.Res.Body)
+	_, err = io.Copy(out, fr.Response.Body)
 	if err != nil {
 		log4go.Error(err.Error())
 		return

@@ -39,9 +39,9 @@ type Datastore interface {
 	StoreURLFetchResults(fr *FetchResults)
 
 	// StoreParsedURL stores a URL parsed out of a page (i.e. a URL we may not
-	// have crawled yet). `u` is the URL to store. `res` is the FetchResults
+	// have crawled yet). `u` is the URL to store. `fr` is the FetchResults
 	// object for the fetch from which we got the URL, for any context the
-	// datastore may want. A datastore implementation should handle `res` being
+	// datastore may want. A datastore implementation should handle `fr` being
 	// nil, so links can be seeded without a fetch having occurred.
 	//
 	// URLs passed to StoreParsedURL should be absolute.
@@ -192,17 +192,17 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 
 	// The response may be null, set status to 0 until we do something with the FetchError
 	status := 0
-	if fr.Res != nil {
-		status = fr.Res.StatusCode
+	if fr.Response != nil {
+		status = fr.Response.StatusCode
 	}
 
 	err := ds.db.Query(
 		`INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
-		fr.Url.ToplevelDomainPlusOne(),
-		fr.Url.Subdomain(),
-		fr.Url.Path,
-		fr.Url.Scheme,
+		fr.URL.ToplevelDomainPlusOne(),
+		fr.URL.Subdomain(),
+		fr.URL.Path,
+		fr.URL.Scheme,
 		fr.FetchTime,
 		status,
 		//TODO: error -- fr.FetchError,

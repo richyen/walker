@@ -16,9 +16,9 @@ func TestSimpleWriterHandler(t *testing.T) {
 	page1URL := parse("http://test.com/page1.html")
 	page1Contents := []byte("<html>stuff</html>")
 	page1Fetch := &walker.FetchResults{
-		Url:              page1URL,
+		URL:              page1URL,
 		ExcludedByRobots: false,
-		Res: &http.Response{
+		Response: &http.Response{
 			Status:        "200 OK",
 			StatusCode:    200,
 			Proto:         "HTTP/1.1",
@@ -57,9 +57,9 @@ func TestSimpleWriterHandlerIgnoresOnRobots(t *testing.T) {
 	page2URL := parse("http://test.com/page2.html")
 	page2Contents := []byte("<html>stuff</html>")
 	page2Fetch := &walker.FetchResults{
-		Url:              page2URL,
+		URL:              page2URL,
 		ExcludedByRobots: true,
-		Res: &http.Response{
+		Response: &http.Response{
 			Status:        "200 OK",
 			StatusCode:    200,
 			Proto:         "HTTP/1.1",
@@ -93,9 +93,9 @@ func TestSimpleWriterHandlerIgnoresBadHTTPCode(t *testing.T) {
 	page3URL := parse("http://test.com/page3.html")
 	page3Contents := []byte("<html>stuff</html>")
 	page3Fetch := &walker.FetchResults{
-		Url:              page3URL,
+		URL:              page3URL,
 		ExcludedByRobots: false,
-		Res: &http.Response{
+		Response: &http.Response{
 			Status:        "404 NOT FOUND",
 			StatusCode:    404,
 			Proto:         "HTTP/1.1",

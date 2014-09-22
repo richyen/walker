@@ -30,13 +30,13 @@ func init() {
 // individual fetch. Handlers receive this to process results.
 type FetchResults struct {
 	// Url that was fetched; will always be populated
-	Url *URL
+	URL *URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
 	// true. Response.Body may not be the same object the HTTP request actually
 	// returns; the fetcher may have read in the response to parse out links,
 	// replacing Response.Body with an alternate reader.
-	Res *http.Response
+	Response *http.Response
 
 	// FetchError if the net/http request had an error (non-2XX HTTP response
 	// codes are not considered errors)
@@ -176,7 +176,7 @@ func (f *fetcher) start() {
 
 			//TODO: check <-f.quit and clean up appropriately
 
-			fr := &FetchResults{Url: link}
+			fr := &FetchResults{URL: link}
 
 			if f.robots != nil && !f.robots.Test(link.String()) {
 				fr.ExcludedByRobots = true
@@ -187,16 +187,16 @@ func (f *fetcher) start() {
 			time.Sleep(f.crawldelay)
 
 			fr.FetchTime = time.Now()
-			fr.Res, fr.FetchError = f.fetch(link)
+			fr.Response, fr.FetchError = f.fetch(link)
 			if fr.FetchError != nil {
 				log4go.Debug("Error fetching %v: %v", link, fr.FetchError)
 				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
 
-			log4go.Debug("Fetched %v -- %v", link, fr.Res.Status)
+			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
 
-			if isHTML(fr.Res) {
+			if isHTML(fr.Response) {
 				log4go.Debug("Reading and parsing as HTML (%v)", link)
 
 				//TODO: ReadAll is inefficient. We should use a properly sized
@@ -204,13 +204,13 @@ func (f *fetcher) start() {
 				//		Config.MaxHTTPContentSizeBytes or possibly
 				//		Content-Length of the response)
 				var body []byte
-				body, fr.FetchError = ioutil.ReadAll(fr.Res.Body)
+				body, fr.FetchError = ioutil.ReadAll(fr.Response.Body)
 				if fr.FetchError != nil {
 					log4go.Debug("Error reading body of %v: %v", link, fr.FetchError)
 					f.fm.Datastore.StoreURLFetchResults(fr)
 					continue
 				}
-				fr.Res.Body = ioutil.NopCloser(bytes.NewReader(body))
+				fr.Response.Body = ioutil.NopCloser(bytes.NewReader(body))
 
 				outlinks, err := getLinks(body)
 				if err != nil {

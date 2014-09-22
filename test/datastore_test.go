@@ -98,9 +98,9 @@ func TestDatastoreBasic(t *testing.T) {
 	}
 
 	page1Fetch := &walker.FetchResults{
-		Url:       page1URL,
+		URL:       page1URL,
 		FetchTime: time.Now(),
-		Res: &http.Response{
+		Response: &http.Response{
 			Status:        "200 OK",
 			StatusCode:    200,
 			Proto:         "HTTP/1.1",
@@ -119,9 +119,9 @@ func TestDatastoreBasic(t *testing.T) {
 		},
 	}
 	page2Fetch := &walker.FetchResults{
-		Url:       page2URL,
+		URL:       page2URL,
 		FetchTime: time.Now(),
-		Res: &http.Response{
+		Response: &http.Response{
 			Status:        "200 OK",
 			StatusCode:    200,
 			Proto:         "HTTP/1.1",
