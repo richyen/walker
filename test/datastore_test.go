@@ -222,6 +222,13 @@ func TestNewDomainAdditions(t *testing.T) {
 	if count != 1 {
 		t.Error("Expected test.com to be added to domain_info")
 	}
+
+	db.Query(`DELETE FROM domain_info WHERE domain = 'test.com'`).Exec()
+	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
+	db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = 'test.com'`).Scan(&count)
+	if count != 0 {
+		t.Error("Expected test.com not to be added to domain_info due to cache")
+	}
 }
 
 func TestWalkerURL(t *testing.T) {
