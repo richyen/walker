@@ -49,6 +49,59 @@ func getDB(t *testing.T) *gocql.Session {
 	return db
 }
 
+var page1URL *walker.URL
+var page1Fetch *walker.FetchResults
+var page2URL *walker.URL
+var page2Fetch *walker.FetchResults
+
+func init() {
+	page1URL = parse("http://test.com/page1.html")
+	page1Fetch = &walker.FetchResults{
+		URL:       page1URL,
+		FetchTime: time.Now(),
+		Response: &http.Response{
+			Status:        "200 OK",
+			StatusCode:    200,
+			Proto:         "HTTP/1.1",
+			ProtoMajor:    1,
+			ProtoMinor:    1,
+			ContentLength: 18,
+			Request: &http.Request{
+				Method:        "GET",
+				URL:           page1URL.URL,
+				Proto:         "HTTP/1.1",
+				ProtoMajor:    1,
+				ProtoMinor:    1,
+				ContentLength: 18,
+				Host:          "test.com",
+			},
+		},
+	}
+	page2URL = parse("http://test.com/page2.html")
+	page2Fetch = &walker.FetchResults{
+		URL:       page2URL,
+		FetchTime: time.Now(),
+		Response: &http.Response{
+			Status:        "200 OK",
+			StatusCode:    200,
+			Proto:         "HTTP/1.1",
+			ProtoMajor:    1,
+			ProtoMinor:    1,
+			ContentLength: 18,
+			Request: &http.Request{
+				Method:        "GET",
+				URL:           page2URL.URL,
+				Proto:         "HTTP/1.1",
+				ProtoMajor:    1,
+				ProtoMinor:    1,
+				ContentLength: 18,
+				Host:          "test.com",
+			},
+		},
+	}
+
+}
+
 func TestDatastoreBasic(t *testing.T) {
 	db := getDB(t)
 
@@ -83,8 +136,6 @@ func TestDatastoreBasic(t *testing.T) {
 		t.Errorf("Expected test.com but got %v", host)
 	}
 
-	page1URL := parse("http://test.com/page1.html")
-	page2URL := parse("http://test.com/page2.html")
 	links := map[url.URL]bool{}
 	expectedLinks := map[url.URL]bool{
 		*page1URL.URL: true,
@@ -95,49 +146,6 @@ func TestDatastoreBasic(t *testing.T) {
 	}
 	if !reflect.DeepEqual(links, expectedLinks) {
 		t.Errorf("Expected links from LinksForHost: %v\nBut got: %v", expectedLinks, links)
-	}
-
-	page1Fetch := &walker.FetchResults{
-		URL:       page1URL,
-		FetchTime: time.Now(),
-		Response: &http.Response{
-			Status:        "200 OK",
-			StatusCode:    200,
-			Proto:         "HTTP/1.1",
-			ProtoMajor:    1,
-			ProtoMinor:    1,
-			ContentLength: 18,
-			Request: &http.Request{
-				Method:        "GET",
-				URL:           page1URL.URL,
-				Proto:         "HTTP/1.1",
-				ProtoMajor:    1,
-				ProtoMinor:    1,
-				ContentLength: 18,
-				Host:          "test.com",
-			},
-		},
-	}
-	page2Fetch := &walker.FetchResults{
-		URL:       page2URL,
-		FetchTime: time.Now(),
-		Response: &http.Response{
-			Status:        "200 OK",
-			StatusCode:    200,
-			Proto:         "HTTP/1.1",
-			ProtoMajor:    1,
-			ProtoMinor:    1,
-			ContentLength: 18,
-			Request: &http.Request{
-				Method:        "GET",
-				URL:           page2URL.URL,
-				Proto:         "HTTP/1.1",
-				ProtoMajor:    1,
-				ProtoMinor:    1,
-				ContentLength: 18,
-				Host:          "test.com",
-			},
-		},
 	}
 
 	ds.StoreURLFetchResults(page1Fetch)
@@ -184,6 +192,35 @@ func TestDatastoreBasic(t *testing.T) {
 				WHERE priority = ? AND domain = 'test.com'`, 0).Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected unclaimed domain to be deleted from domains_to_crawl")
+	}
+}
+
+func TestNewDomainAdditions(t *testing.T) {
+	db := getDB(t)
+
+	ds, err := walker.NewCassandraDatastore()
+	if err != nil {
+		t.Fatalf("Failed to create CassandraDatastore: %v", err)
+	}
+
+	origAddNewDomains := walker.Config.AddNewDomains
+	defer func() { walker.Config.AddNewDomains = origAddNewDomains }()
+
+	walker.Config.AddNewDomains = false
+	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
+
+	var count int
+	db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = 'test.com'`).Scan(&count)
+	if count != 0 {
+		t.Error("Expected test.com not to be added to domain_info")
+	}
+
+	walker.Config.AddNewDomains = true
+	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
+
+	db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = 'test.com'`).Scan(&count)
+	if count != 1 {
+		t.Error("Expected test.com to be added to domain_info")
 	}
 }
 

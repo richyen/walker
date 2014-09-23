@@ -221,7 +221,9 @@ func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
 		return
 	}
 	domain := u.ToplevelDomainPlusOne()
-	ds.addDomainIfNew(domain)
+	if Config.AddNewDomains {
+		ds.addDomainIfNew(domain)
+	}
 	err := ds.db.Query(`INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
 						VALUES (?, ?, ?, ?, ?)`,
 		domain, u.Subdomain(), u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
