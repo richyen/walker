@@ -26,6 +26,7 @@ func init() {
 // default). See sample-walker.yaml for explanations and default values.
 type WalkerConfig struct {
 	AddNewDomains           bool     `yaml:"add_new_domains"`
+	AddedDomainsCacheSize   int      `yaml:"added_domains_cache_size"`
 	UserAgent               string   `yaml:"user_agent"`
 	DefaultCrawlDelay       int      `yaml:"default_crawl_delay"`
 	MaxHTTPContentSizeBytes int64    `yaml:"max_http_content_size_bytes"`
@@ -73,6 +74,7 @@ type WalkerConfig struct {
 // what was set by any configuration file.
 func SetDefaultConfig() {
 	Config.AddNewDomains = false
+	Config.AddedDomainsCacheSize = 20000
 	Config.UserAgent = "Walker (http://github.com/iParadigms/walker)"
 	Config.DefaultCrawlDelay = 1
 	Config.MaxHTTPContentSizeBytes = 20 * 1024 * 1024 // 20MB
