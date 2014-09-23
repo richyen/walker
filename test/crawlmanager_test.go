@@ -75,12 +75,12 @@ func TestBasicFetchManagerRun(t *testing.T) {
 
 	for _, call := range h.Calls {
 		fr := call.Arguments.Get(0).(*walker.FetchResults)
-		switch fr.Url.String() {
+		switch fr.URL.String() {
 		case "http://norobots.com/page1.html":
-			contents, _ := ioutil.ReadAll(fr.Res.Body)
+			contents, _ := ioutil.ReadAll(fr.Response.Body)
 			if string(contents) != norobots_page1 {
 				t.Errorf("For %v, expected:\n%v\n\nBut got:\n%v\n",
-					fr.Url, norobots_page1, string(contents))
+					fr.URL, norobots_page1, string(contents))
 			}
 		case "http://norobots.com/page2.html":
 		case "http://norobots.com/page3.html":
