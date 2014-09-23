@@ -29,7 +29,7 @@ func init() {
 // FetchResults contains all relevant context and return data from an
 // individual fetch. Handlers receive this to process results.
 type FetchResults struct {
-	// Url that was fetched; will always be populated
+	// URL that was fetched; will always be populated
 	URL *URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
