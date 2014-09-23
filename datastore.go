@@ -186,38 +186,52 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *URL {
 	return linkchan
 }
 
+// dbfield is a little struct for updating a dynamic list of columns in the
+// database
+type dbfield struct {
+	name  string
+	value interface{}
+}
+
 func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
+	inserts := []dbfield{
+		dbfield{"domain", fr.URL.ToplevelDomainPlusOne()},
+		dbfield{"subdomain", fr.URL.Subdomain()},
+		dbfield{"path", fr.URL.RequestURI()},
+		dbfield{"protocol", fr.URL.Scheme},
+		dbfield{"crawl_time", fr.FetchTime},
+	}
 
 	if fr.FetchError != nil {
-		//TODO
+		inserts = append(inserts, dbfield{"error", fr.FetchError.Error()})
 	}
 
 	if fr.ExcludedByRobots {
-		//TODO: populate robots_excluded
+		inserts = append(inserts, dbfield{"robots_excluded", true})
 	}
 
-	//TODOs here due to gocql's inability to allow nils, find some other way to do it.
-	//TODO: redirectURL, _ := fr.Res.Location()
-
-	// The response may be null, set status to 0 until we do something with the FetchError
-	status := 0
 	if fr.Response != nil {
-		status = fr.Response.StatusCode
+		inserts = append(inserts, dbfield{"status", fr.Response.StatusCode})
 	}
 
+	//TODO: redirectURL, _ := fr.Res.Location()
+	//TODO: fp
+	//TODO: can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
+	//TODO: fr.Res.Header.Get("Content-Type"),
+
+	// Put the values together and run the query
+	names := []string{}
+	values := []interface{}{}
+	placeholders := []string{}
+	for _, f := range inserts {
+		names = append(names, f.name)
+		values = append(values, f.value)
+		placeholders = append(placeholders, "?")
+	}
 	err := ds.db.Query(
-		`INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		fr.URL.ToplevelDomainPlusOne(),
-		fr.URL.Subdomain(),
-		fr.URL.Path,
-		fr.URL.Scheme,
-		fr.FetchTime,
-		status,
-		//TODO: error -- fr.FetchError,
-		//TODO: fp
-		//TODO: can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
-		//TODO: fr.Res.Header.Get("Content-Type"),
+		fmt.Sprintf(`INSERT INTO links (%s) VALUES (%s)`,
+			strings.Join(names, ", "), strings.Join(placeholders, ", ")),
+		values...,
 	).Exec()
 	if err != nil {
 		log4go.Error("Failed storing fetch results: %v", err)
