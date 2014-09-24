@@ -49,6 +49,18 @@ func getDB(t *testing.T) *gocql.Session {
 	return db
 }
 
+// getDS is a convenience function for getting a CassandraDatastore and failing
+// if we couldn't
+func getDS(t *testing.T) *walker.CassandraDatastore {
+	ds, err := walker.NewCassandraDatastore()
+	if err != nil {
+		t.Fatalf("Failed to create CassandraDatastore: %v", err)
+	}
+	return ds
+}
+
+//TODO: test with query params
+
 var page1URL *walker.URL
 var page1Fetch *walker.FetchResults
 var page2URL *walker.URL
@@ -104,11 +116,7 @@ func init() {
 
 func TestDatastoreBasic(t *testing.T) {
 	db := getDB(t)
-
-	ds, err := walker.NewCassandraDatastore()
-	if err != nil {
-		t.Fatalf("Failed to create CassandraDatastore: %v", err)
-	}
+	ds := getDS(t)
 
 	insertDomainToCrawl := `INSERT INTO domains_to_crawl (domain, crawler_token, priority)
 								VALUES (?, ?, ?)`
@@ -197,11 +205,7 @@ func TestDatastoreBasic(t *testing.T) {
 
 func TestNewDomainAdditions(t *testing.T) {
 	db := getDB(t)
-
-	ds, err := walker.NewCassandraDatastore()
-	if err != nil {
-		t.Fatalf("Failed to create CassandraDatastore: %v", err)
-	}
+	ds := getDS(t)
 
 	origAddNewDomains := walker.Config.AddNewDomains
 	defer func() { walker.Config.AddNewDomains = origAddNewDomains }()
@@ -231,7 +235,165 @@ func TestNewDomainAdditions(t *testing.T) {
 	}
 }
 
-func TestWalkerURL(t *testing.T) {
+type StoreURLExpectation struct {
+	Input    *walker.FetchResults
+	Expected *LinksExpectation
+}
+
+// The results we expect in the database for various fields. Non-primary
+// keys are pointers so we can expect NULL for any of them
+type LinksExpectation struct {
+	Domain           string
+	Subdomain        string
+	Path             string
+	Protocol         string
+	CrawlTime        time.Time
+	FetchError       string
+	ExcludedByRobots bool
+	Status           int
+}
+
+var StoreURLExpectations []StoreURLExpectation
+
+func init() {
+	StoreURLExpectations = []StoreURLExpectation{
+		StoreURLExpectation{
+			Input: &walker.FetchResults{
+				URL:       parse("http://test.com/page1.html"),
+				FetchTime: time.Unix(0, 0),
+				Response: &http.Response{
+					StatusCode: 200,
+					Request: &http.Request{
+						Host: "test.com",
+					},
+				},
+			},
+			Expected: &LinksExpectation{
+				Domain:    "test.com",
+				Path:      "/page1.html",
+				Protocol:  "http",
+				CrawlTime: time.Unix(0, 0),
+				Status:    200,
+			},
+		},
+		StoreURLExpectation{
+			Input: &walker.FetchResults{
+				URL:       parse("http://test.com/page2.html?var1=abc&var2=def"),
+				FetchTime: time.Unix(0, 0),
+				Response: &http.Response{
+					StatusCode: 200,
+				},
+			},
+			Expected: &LinksExpectation{
+				Domain:    "test.com",
+				Path:      "/page2.html?var1=abc&var2=def",
+				Protocol:  "http",
+				CrawlTime: time.Unix(0, 0),
+				Status:    200,
+			},
+		},
+		StoreURLExpectation{
+			Input: &walker.FetchResults{
+				URL:              parse("http://test.com/page3.html"),
+				ExcludedByRobots: true,
+			},
+			Expected: &LinksExpectation{
+				Domain:           "test.com",
+				Path:             "/page3.html",
+				Protocol:         "http",
+				CrawlTime:        time.Unix(0, 0),
+				ExcludedByRobots: true,
+			},
+		},
+		StoreURLExpectation{
+			Input: &walker.FetchResults{
+				URL:       parse("http://test.com/page4.html"),
+				FetchTime: time.Unix(1234, 5678),
+				Response: &http.Response{
+					StatusCode: 200,
+				},
+			},
+			Expected: &LinksExpectation{
+				Domain:    "test.com",
+				Path:      "/page4.html",
+				Protocol:  "http",
+				CrawlTime: time.Unix(1234, 5678),
+				Status:    200,
+			},
+		},
+		StoreURLExpectation{
+			Input: &walker.FetchResults{
+				URL:       parse("https://test.com/page5.html"),
+				FetchTime: time.Unix(0, 0),
+				Response: &http.Response{
+					StatusCode: 200,
+				},
+			},
+			Expected: &LinksExpectation{
+				Domain:    "test.com",
+				Path:      "/page5.html",
+				Protocol:  "https",
+				CrawlTime: time.Unix(0, 0),
+				Status:    200,
+			},
+		},
+		StoreURLExpectation{
+			Input: &walker.FetchResults{
+				URL:       parse("https://sub.dom1.test.com/page5.html"),
+				FetchTime: time.Unix(0, 0),
+				Response: &http.Response{
+					StatusCode: 200,
+				},
+			},
+			Expected: &LinksExpectation{
+				Domain:    "test.com",
+				Subdomain: "sub.dom1",
+				Path:      "/page5.html",
+				Protocol:  "https",
+				CrawlTime: time.Unix(0, 0),
+				Status:    200,
+			},
+		},
+	}
+}
+
+func TestStoreURLFetchResults(t *testing.T) {
+	db := getDB(t)
+	ds := getDS(t)
+
+	for _, tcase := range StoreURLExpectations {
+		ds.StoreURLFetchResults(tcase.Input)
+		exp := tcase.Expected
+
+		actual := &LinksExpectation{}
+		err := db.Query(
+			`SELECT error, robots_excluded, status FROM links
+			WHERE domain = ? AND subdomain = ? AND path = ? AND protocol = ?`, // AND crawl_time = ?`,
+			exp.Domain,
+			exp.Subdomain,
+			exp.Path,
+			exp.Protocol,
+			//exp.CrawlTime,
+		).Scan(&actual.FetchError, &actual.ExcludedByRobots, &actual.Status)
+		if err != nil {
+			t.Errorf("Did not find row in links: %+v\nInput: %+v\nError: %v", exp, tcase.Input, err)
+		}
+		if exp.FetchError != actual.FetchError {
+			t.Errorf("Expected error: %v\nBut got: %v\nFor input: %+v",
+				exp.FetchError, actual.FetchError, tcase.Input)
+		}
+		if exp.ExcludedByRobots != actual.ExcludedByRobots {
+			t.Errorf("Expected robots_excluded: %v\nBut got: %v\nFor input: %+v",
+				exp.ExcludedByRobots, actual.ExcludedByRobots, tcase.Input)
+		}
+		if exp.Status != actual.Status {
+			t.Errorf("Expected status: %v\nBut got: %v\nFor input: %+v",
+				exp.Status, actual.Status, tcase.Input)
+		}
+	}
+}
+
+func TestURL(t *testing.T) {
 	url1, err := url.Parse("http://sub1.test.com/thepath?query=blah")
 	if err != nil {
 		t.Fatal(err)
