@@ -3,7 +3,9 @@ package walker
 import (
 	"bytes"
 	"fmt"
+	"github.com/iParadigms/walker/mimetools"
 	"io/ioutil"
+	"mime"
 	"strings"
 	"sync"
 
@@ -134,6 +136,9 @@ type FetchManager struct {
 	fetchers  []*fetcher
 	fetchWait sync.WaitGroup
 	started   bool
+
+	// used to match Content-Type headers
+	acceptFormats *mimetools.Matcher
 }
 
 // Start begins processing assuming that the datastore and any handlers have
@@ -180,66 +185,6 @@ func (fm *FetchManager) Stop() {
 	fm.fetchWait.Wait()
 }
 
-// mimeMatcher will match Accept or Content-Type mime types that include *
-type mimeMatcher struct {
-	// allOk is true, means any mime type is accepted
-	allOk bool
-
-	// exact mime type matches
-	exact map[string]bool
-
-	// mime type 'text/*' will cause prefix to hold the string 'text/',
-	// and will match any string that starts with 'text/'
-	prefix []string
-
-	// for completeness '*/html' will cause '/html' in suffix, and match
-	// any string that ends with '/html'
-	suffix []string
-}
-
-func newMimeMatcher() *mimeMatcher {
-	return &mimeMatcher{
-		allOk:  false,
-		exact:  make(map[string]bool),
-		prefix: []string{},
-		suffix: []string{},
-	}
-}
-
-func (mm *mimeMatcher) add(mimeString string) {
-	if mimeString == "*/*" {
-		mm.allOk = true
-	} else if strings.HasPrefix(mimeString, "*/") {
-		mm.suffix = append(mm.suffix, strings.Replace(mimeString, "*", "", 1))
-
-	} else if strings.HasSuffix(mimeString, "/*") {
-		mm.prefix = append(mm.prefix, strings.Replace(mimeString, "*", "", 1))
-	} else {
-		mm.exact[mimeString] = true
-	}
-}
-
-func (mm *mimeMatcher) match(mimeString string) bool {
-	if mm.allOk {
-		return true
-	}
-	if mm.exact[mimeString] {
-		return true
-	}
-	for _, p := range mm.prefix {
-		if strings.HasPrefix(mimeString, p) {
-			return true
-		}
-	}
-	for _, s := range mm.suffix {
-		if strings.HasSuffix(mimeString, s) {
-			return true
-		}
-	}
-
-	return false
-}
-
 // fetcher encompasses one of potentially many fetchers the FetchManager may
 // start up. It will effectively manage one goroutine, crawling one host at a
 // time, claiming a new host when it has exhausted the previous one.
@@ -257,9 +202,6 @@ type fetcher struct {
 	// the fetcher may need to clean up (ex. unclaim the current host) after
 	// reading from quit
 	done chan struct{}
-
-	// used to match Content-Type headers
-	acceptFormats *mimeMatcher
 }
 
 func newFetcher(fm *FetchManager) *fetcher {
@@ -272,11 +214,12 @@ func newFetcher(fm *FetchManager) *fetcher {
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})
 
-	mm := newMimeMatcher()
-	for _, format := range Config.AcceptFormats {
-		mm.add(format)
+	mm, err := mimetools.NewMatcher(Config.AcceptFormats)
+	f.fm.acceptFormats = mm
+	if err != nil {
+		log4go.Error("mimetools.NewMatcher failed to initialize: %v", err)
+		f.fm.acceptFormats = mimetools.NewMatcher([]string{})
 	}
-	f.acceptFormats = mm
 	return f
 }
 
@@ -370,7 +313,7 @@ func (f *fetcher) start() {
 
 			// handle any doc that we searched or that is in our AcceptFormats
 			// list
-			if canSearch || isHandleable(fr.Response, f.acceptFormats) {
+			if canSearch || isHandleable(fr.Response, f.fm.acceptFormats) {
 				f.fm.Handler.HandleResponse(fr)
 			}
 			//TODO: Wrap the reader and check for read error here
@@ -510,9 +453,14 @@ func isHTML(r *http.Response) bool {
 	return false
 }
 
-func isHandleable(r *http.Response, mm *mimeMatcher) bool {
-	for _, ct := range r.Header["Content-Type"] {
-		if mm.match(ct) {
+func isHandleable(r *http.Response, mm *mimetools.Matcher) bool {
+	for _, rawct := range r.Header["Content-Type"] {
+		ct, _, err := mime.ParseMediaType(rawct)
+		if err != nil {
+			return false
+		}
+		matched, err := mm.Match(ct)
+		if err == nil && matched {
 			return true
 		}
 	}
