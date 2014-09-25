@@ -28,6 +28,7 @@ type WalkerConfig struct {
 	AddNewDomains           bool     `yaml:"add_new_domains"`
 	AddedDomainsCacheSize   int      `yaml:"added_domains_cache_size"`
 	UserAgent               string   `yaml:"user_agent"`
+	AcceptFormats           []string `yaml:"accept_formats"`
 	DefaultCrawlDelay       int      `yaml:"default_crawl_delay"`
 	MaxHTTPContentSizeBytes int64    `yaml:"max_http_content_size_bytes"`
 	IgnoreTags              []string `yaml:"ignore_tags"`
@@ -76,6 +77,7 @@ func SetDefaultConfig() {
 	Config.AddNewDomains = false
 	Config.AddedDomainsCacheSize = 20000
 	Config.UserAgent = "Walker (http://github.com/iParadigms/walker)"
+	Config.AcceptFormats = []string{"text/html", "text/*;"} //NOTE you can add quality factors by doing "text/html; q=0.4"
 	Config.DefaultCrawlDelay = 1
 	Config.MaxHTTPContentSizeBytes = 20 * 1024 * 1024 // 20MB
 	Config.NumSimultaneousFetchers = 10
