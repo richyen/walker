@@ -1,7 +1,6 @@
 package mimetools
 
 import (
-	"fmt"
 	"mime"
 	"strings"
 )
@@ -46,13 +45,6 @@ func NewMatcher(mediaTypes []string) (*Matcher, error) {
 	}
 
 	return mm, nil
-}
-
-func (mm *Matcher) DebugPrint() {
-	fmt.Printf("allOk: %v\n", mm.allOk)
-	fmt.Printf("exact: %v\n", mm.exact)
-	fmt.Printf("prefix: %v\n", mm.prefix)
-	fmt.Printf("suffix: %v\n", mm.suffix)
 }
 
 func (mm *Matcher) addMediaType(mimeString string) error {
