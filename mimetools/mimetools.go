@@ -23,6 +23,13 @@ type Matcher struct {
 	suffix []string
 }
 
+//IMPL NOTE: This implementation could be made into a single regex call. But
+//that would require very carefully auditing the input mediaTypes, protecting
+//regex characters and such. Seemed safer and easier to build this.
+
+// NewMatcher returns a new matcher instance and any errors that occurred.
+// Note that if an error is returned, a Matcher is returned that matches
+// any mime type.
 func NewMatcher(mediaTypes []string) (*Matcher, error) {
 	mm := &Matcher{
 		allOk:  false,
@@ -31,9 +38,10 @@ func NewMatcher(mediaTypes []string) (*Matcher, error) {
 		suffix: []string{},
 	}
 	for _, x := range mediaTypes {
-		err := mm.AddMediaType(x)
+		err := mm.addMediaType(x)
 		if err != nil {
-			return nil, err
+			mm.allOk = true
+			return mm, err
 		}
 	}
 
@@ -45,10 +53,9 @@ func (mm *Matcher) DebugPrint() {
 	fmt.Printf("exact: %v\n", mm.exact)
 	fmt.Printf("prefix: %v\n", mm.prefix)
 	fmt.Printf("suffix: %v\n", mm.suffix)
-
 }
 
-func (mm *Matcher) AddMediaType(mimeString string) error {
+func (mm *Matcher) addMediaType(mimeString string) error {
 	mediaName, _, err := mime.ParseMediaType(mimeString)
 	if err != nil {
 		return err

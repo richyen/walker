@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/iParadigms/walker/mimetools"
 	"io/ioutil"
-	"mime"
 	"strings"
 	"sync"
 
@@ -217,8 +216,8 @@ func newFetcher(fm *FetchManager) *fetcher {
 	mm, err := mimetools.NewMatcher(Config.AcceptFormats)
 	f.fm.acceptFormats = mm
 	if err != nil {
+		//NOTE: the Matcher object above matches anything if err != nil
 		log4go.Error("mimetools.NewMatcher failed to initialize: %v", err)
-		f.fm.acceptFormats = mimetools.NewMatcher([]string{})
 	}
 	return f
 }
@@ -454,11 +453,7 @@ func isHTML(r *http.Response) bool {
 }
 
 func isHandleable(r *http.Response, mm *mimetools.Matcher) bool {
-	for _, rawct := range r.Header["Content-Type"] {
-		ct, _, err := mime.ParseMediaType(rawct)
-		if err != nil {
-			return false
-		}
+	for _, ct := range r.Header["Content-Type"] {
 		matched, err := mm.Match(ct)
 		if err == nil && matched {
 			return true

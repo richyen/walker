@@ -34,12 +34,21 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		parse("http://norobots.com/page3.html"),
 	})
 	ds.On("UnclaimHost", "norobots.com").Return()
-	ds.On("ClaimNewHost").Return("robotsdelay1.com")
+
+	ds.On("ClaimNewHost").Return("robotsdelay1.com").Once()
 	ds.On("LinksForHost", "robotsdelay1.com").Return([]*walker.URL{
 		parse("http://robotsdelay1.com/page4.html"),
 		parse("http://robotsdelay1.com/page5.html"),
 	})
 	ds.On("UnclaimHost", "robotsdelay1.com").Return()
+
+	ds.On("ClaimNewHost").Return("accept.com")
+	ds.On("LinksForHost", "accept.com").Return([]*walker.URL{
+		parse("http://accept.com/accept_html.html"),
+		parse("http://accept.com/accept_text.txt"),
+		parse("http://accept.com/donthandle"),
+	})
+	ds.On("UnclaimHost", "accept.com").Return()
 
 	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
 	ds.On("StoreParsedURL",
@@ -61,6 +70,17 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		Body: "User-agent: *\nCrawl-delay: 1\n",
 	})
 
+	walker.Config.AcceptFormats = []string{"text/html", "text/plain"}
+	rs.SetResponse("http://accept.com/robots.txt", &MockResponse{Status: 404})
+	rs.SetResponse("http://accept.com/accept_html.html", &MockResponse{
+		ContentType: "text/html",
+	})
+	rs.SetResponse("http://accept.com/accept_text.txt", &MockResponse{
+		ContentType: "text/plain",
+	})
+	rs.SetResponse("http://accept.com/donthandle", &MockResponse{
+		ContentType: "foo/bar",
+	})
 	manager := &walker.FetchManager{
 		Datastore: ds,
 		Handler:   h,
@@ -72,7 +92,8 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	manager.Stop()
 
 	rs.Stop()
-
+	recvTextHtml := false
+	recvTextPlain := false
 	for _, call := range h.Calls {
 		fr := call.Arguments.Get(0).(*walker.FetchResults)
 		switch fr.URL.String() {
@@ -86,9 +107,19 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		case "http://norobots.com/page3.html":
 		case "http://robotsdelay1.com/page4.html":
 		case "http://robotsdelay1.com/page5.html":
+		case "http://accept.com/accept_html.html":
+			recvTextHtml = true
+		case "http://accept.com/accept_text.txt":
+			recvTextPlain = true
 		default:
 			t.Errorf("Got a Handler.HandleResponse call we didn't expect: %v", fr)
 		}
+	}
+	if !recvTextHtml {
+		t.Errorf("Failed to handle explicit Content-Type: text/html")
+	}
+	if !recvTextPlain {
+		t.Errorf("Failed to handle Content-Type: text/plain")
 	}
 
 	ds.AssertExpectations(t)
