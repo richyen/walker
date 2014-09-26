@@ -52,13 +52,17 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	})
 	ds.On("UnclaimHost", "robotsdelay1.com").Return()
 
-	ds.On("ClaimNewHost").Return("accept.com")
+	ds.On("ClaimNewHost").Return("accept.com").Once()
 	ds.On("LinksForHost", "accept.com").Return([]*walker.URL{
 		parse("http://accept.com/accept_html.html"),
 		parse("http://accept.com/accept_text.txt"),
 		parse("http://accept.com/donthandle"),
 	})
 	ds.On("UnclaimHost", "accept.com").Return()
+
+	// This last call will make ClaimNewHost return "" on each subsequent call,
+	// which will put the fetcher to sleep.
+	ds.On("ClaimNewHost").Return("")
 
 	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
 	ds.On("StoreParsedURL",
