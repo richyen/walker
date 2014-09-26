@@ -156,6 +156,13 @@ func (fm *FetchManager) Start() {
 	if fm.started {
 		panic("Cannot start a FetchManager multiple times")
 	}
+
+	mm, err := mimetools.NewMatcher(Config.AcceptFormats)
+	fm.acceptFormats = mm
+	if err != nil {
+		panic(fmt.Errorf("mimetools.NewMatcher failed to initialize: %v", err))
+	}
+
 	fm.started = true
 	numFetchers := Config.NumSimultaneousFetchers
 	fm.fetchers = make([]*fetcher, numFetchers)
@@ -212,13 +219,6 @@ func newFetcher(fm *FetchManager) *fetcher {
 	}
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})
-
-	mm, err := mimetools.NewMatcher(Config.AcceptFormats)
-	f.fm.acceptFormats = mm
-	if err != nil {
-		//NOTE: the Matcher object above matches anything if err != nil
-		log4go.Error("mimetools.NewMatcher failed to initialize: %v", err)
-	}
 	return f
 }
 
@@ -312,9 +312,14 @@ func (f *fetcher) start() {
 
 			// handle any doc that we searched or that is in our AcceptFormats
 			// list
-			if canSearch || isHandleable(fr.Response, f.fm.acceptFormats) {
+			canHandle := isHandleable(fr.Response, f.fm.acceptFormats)
+			if canSearch || canHandle {
 				f.fm.Handler.HandleResponse(fr)
+			} else {
+				ctype := strings.Join(fr.Response.Header["Content-Type"], ",")
+				log4go.Debug("Not handling url %v -- `Content-Type: %v`", fr.URL.String(), ctype)
 			}
+
 			//TODO: Wrap the reader and check for read error here
 			f.fm.Datastore.StoreURLFetchResults(fr)
 

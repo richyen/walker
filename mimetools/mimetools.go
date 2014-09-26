@@ -1,3 +1,14 @@
+/*
+mimetools.Matcher allows matching against wildcard mediaTypes.
+
+Example:
+mm := mimetools.NewMatcher([]string{"text/*", "application/json"})
+mm.Match("text/html") // returns true, nil
+mm.Match("text/plain") //returns true, nil
+mm.Match("application/json") // returns true, nil
+mm.Match("application/vnd.ms-excel") // returns false, nil
+
+*/
 package mimetools
 
 import (
@@ -5,7 +16,7 @@ import (
 	"strings"
 )
 
-// mimeMatcher will match Accept or Content-Type mime types that include *
+// Matcher will match Accept or Content-Type mime types that include *
 type Matcher struct {
 	// allOk is true, means any mime type is accepted
 	allOk bool

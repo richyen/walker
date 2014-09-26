@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-const norobots_page1 string = `<!DOCTYPE html>
+const html_body string = `<!DOCTYPE html>
 <html>
 <head>
 <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
@@ -22,6 +22,16 @@ const norobots_page1 string = `<!DOCTYPE html>
 	<a href="/dir1/">Dir1</a>
 	<a href="/dir2/">Dir2</a>
 	<a id="other" href="http://other.com/" title="stuff">Other</a>
+</div>
+</html>`
+
+const html_body_nolinks string = `<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>No Links</title>
+</head>
+<div id="menu">
 </div>
 </html>`
 
@@ -64,7 +74,7 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	}
 	rs.SetResponse("http://norobots.com/robots.txt", &MockResponse{Status: 404})
 	rs.SetResponse("http://norobots.com/page1.html", &MockResponse{
-		Body: norobots_page1,
+		Body: html_body,
 	})
 	rs.SetResponse("http://robotsdelay1.com/robots.txt", &MockResponse{
 		Body: "User-agent: *\nCrawl-delay: 1\n",
@@ -74,6 +84,7 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	rs.SetResponse("http://accept.com/robots.txt", &MockResponse{Status: 404})
 	rs.SetResponse("http://accept.com/accept_html.html", &MockResponse{
 		ContentType: "text/html",
+		Body:        html_body_nolinks,
 	})
 	rs.SetResponse("http://accept.com/accept_text.txt", &MockResponse{
 		ContentType: "text/plain",
@@ -99,9 +110,9 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		switch fr.URL.String() {
 		case "http://norobots.com/page1.html":
 			contents, _ := ioutil.ReadAll(fr.Response.Body)
-			if string(contents) != norobots_page1 {
+			if string(contents) != html_body {
 				t.Errorf("For %v, expected:\n%v\n\nBut got:\n%v\n",
-					fr.URL, norobots_page1, string(contents))
+					fr.URL, html_body, string(contents))
 			}
 		case "http://norobots.com/page2.html":
 		case "http://norobots.com/page3.html":
