@@ -3,6 +3,7 @@ package walker
 import (
 	"bytes"
 	"fmt"
+	"github.com/iParadigms/walker/mimetools"
 	"io/ioutil"
 	"strings"
 	"sync"
@@ -134,6 +135,9 @@ type FetchManager struct {
 	fetchers  []*fetcher
 	fetchWait sync.WaitGroup
 	started   bool
+
+	// used to match Content-Type headers
+	acceptFormats *mimetools.Matcher
 }
 
 // Start begins processing assuming that the datastore and any handlers have
@@ -152,6 +156,13 @@ func (fm *FetchManager) Start() {
 	if fm.started {
 		panic("Cannot start a FetchManager multiple times")
 	}
+
+	mm, err := mimetools.NewMatcher(Config.AcceptFormats)
+	fm.acceptFormats = mm
+	if err != nil {
+		panic(fmt.Errorf("mimetools.NewMatcher failed to initialize: %v", err))
+	}
+
 	fm.started = true
 	numFetchers := Config.NumSimultaneousFetchers
 	fm.fetchers = make([]*fetcher, numFetchers)
@@ -265,7 +276,8 @@ func (f *fetcher) start() {
 
 			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
 
-			if isHTML(fr.Response) {
+			canSearch := isHTML(fr.Response)
+			if canSearch {
 				log4go.Debug("Reading and parsing as HTML (%v)", link)
 
 				//TODO: ReadAll is inefficient. We should use a properly sized
@@ -298,7 +310,16 @@ func (f *fetcher) start() {
 				}
 			}
 
-			f.fm.Handler.HandleResponse(fr)
+			// handle any doc that we searched or that is in our AcceptFormats
+			// list
+			canHandle := isHandleable(fr.Response, f.fm.acceptFormats)
+			if canSearch || canHandle {
+				f.fm.Handler.HandleResponse(fr)
+			} else {
+				ctype := strings.Join(fr.Response.Header["Content-Type"], ",")
+				log4go.Debug("Not handling url %v -- `Content-Type: %v`", fr.URL.String(), ctype)
+			}
+
 			//TODO: Wrap the reader and check for read error here
 			f.fm.Datastore.StoreURLFetchResults(fr)
 
@@ -343,6 +364,7 @@ func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 	}
 
 	req.Header.Set("User-Agent", Config.UserAgent)
+	req.Header.Set("Accept", strings.Join(Config.AcceptFormats, ","))
 	//TODO: set headers? req.Header[] = ...
 
 	// Do the request.
@@ -432,5 +454,16 @@ func isHTML(r *http.Response) bool {
 			return true
 		}
 	}
+	return false
+}
+
+func isHandleable(r *http.Response, mm *mimetools.Matcher) bool {
+	for _, ct := range r.Header["Content-Type"] {
+		matched, err := mm.Match(ct)
+		if err == nil && matched {
+			return true
+		}
+	}
+
 	return false
 }

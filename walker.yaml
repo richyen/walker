@@ -16,6 +16,9 @@
 # Configure the User-Agent header
 #user_agent: Walker (http://github.com/iParadigms/walker)
 
+# Configure which formats this crawler Accepts
+#accept_formats: ["text/html", "text/*"]
+
 # Crawl delay (in seconds) to use when unspecified by robots.txt
 #default_crawl_delay: 1
 
