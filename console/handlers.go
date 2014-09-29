@@ -3,6 +3,7 @@ package console
 import (
 	"fmt"
 	"net/http"
+	"strings"
 
 	"code.google.com/p/log4go"
 	"github.com/gorilla/mux"
@@ -40,8 +41,9 @@ type Route struct {
 func Routes() []Route {
 	return []Route{
 		Route{Path: "/", Handler: home},
-		Route{Path: "/domain", Handler: domainHandler},
+		Route{Path: "/listDomains", Handler: listDomainsHandler},
 		Route{Path: "/domain/{domain}", Handler: domainLookupHandler},
+		Route{Path: "/addLink", Handler: addLinkIndexHandler},
 	}
 }
 
@@ -49,7 +51,7 @@ func home(w http.ResponseWriter, req *http.Request) {
 	doRender(w, "home")
 }
 
-func domainHandler(w http.ResponseWriter, req *http.Request) {
+func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	domains, err := DS.ListLinkDomains()
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
@@ -57,7 +59,7 @@ func domainHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	log4go.Info("Got %v", domains)
-	doRender(w, "domain/index", "Domains", domains)
+	doRender(w, "listDomains", "Domains", domains)
 }
 
 func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
@@ -72,4 +74,31 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	doRender(w, "domain/info", "Domain", domain, "Links", urls)
+}
+
+func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method == "POST" {
+		err := req.ParseForm()
+		if err != nil {
+			log4go.Info("Failed to parse form in addLink %v", err)
+		} else {
+			linksExt, ok := req.Form["links"]
+			if !ok {
+				log4go.Info("Failed to find 'links' in form submission")
+			} else {
+				lines := strings.Split(linksExt[0], "\n")
+				links := make([]string, 0, len(lines))
+				for i := range lines {
+					t := strings.TrimSpace(lines[i])
+					if t != "" {
+						links = append(links, t)
+					}
+				}
+				for _, l := range links {
+					log4go.Info("LINK ENTER: %v", l)
+				}
+			}
+		}
+	}
+	doRender(w, "addLink")
 }
