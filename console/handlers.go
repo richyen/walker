@@ -1,6 +1,7 @@
 package console
 
 import (
+	"fmt"
 	"net/http"
 
 	"code.google.com/p/log4go"
@@ -8,12 +9,28 @@ import (
 	"github.com/unrolled/render"
 )
 
-//PERM HOME????
-var rend = render.New(render.Options{
+var renderer = render.New(render.Options{
 	Layout:        "layout",
 	IndentJSON:    true,
 	IsDevelopment: true,
 })
+
+func doRender(w http.ResponseWriter, template string, keyValues ...interface{}) {
+	if len(keyValues)%2 != 0 {
+		panic(fmt.Errorf("INTERNAL ERROR: poorly used doRender: keyValues does not have even number of elements"))
+	}
+	mp := map[string]interface{}{}
+	for i := 0; i < len(keyValues); i = i + 2 {
+		protokey := keyValues[i]
+		key, keyok := protokey.(string)
+		if !keyok {
+			panic(fmt.Errorf("INTERNAL ERROR: poorly used doRender: found a non-string in keyValues"))
+		}
+		value := keyValues[i+1]
+		mp[key] = value
+	}
+	renderer.HTML(w, http.StatusOK, template, mp)
+}
 
 type Route struct {
 	Path    string
@@ -23,24 +40,24 @@ type Route struct {
 func Routes() []Route {
 	return []Route{
 		Route{Path: "/", Handler: home},
-		Route{Path: "/domain/", Handler: domainHandler},
+		Route{Path: "/domain", Handler: domainHandler},
 		Route{Path: "/domain/{domain}", Handler: domainLookupHandler},
 	}
 }
 
 func home(w http.ResponseWriter, req *http.Request) {
-	rend.HTML(w, http.StatusOK, "home", nil)
+	doRender(w, "home")
 }
 
 func domainHandler(w http.ResponseWriter, req *http.Request) {
 	domains, err := DS.ListLinkDomains()
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
-		rend.HTML(w, http.StatusInternalServerError, "domain/index", nil)
+		renderer.HTML(w, http.StatusInternalServerError, "domain/index", nil)
 		return
 	}
 	log4go.Info("Got %v", domains)
-	rend.HTML(w, http.StatusOK, "domain/index", map[string]interface{}{"Domains": domains})
+	doRender(w, "domain/index", "Domains", domains)
 }
 
 func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
@@ -51,8 +68,8 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 	urls, err := DS.LinksForDomain(domain)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
-		rend.HTML(w, http.StatusInternalServerError, "domain/info", nil)
+		renderer.HTML(w, http.StatusInternalServerError, "domain/info", nil)
 		return
 	}
-	rend.HTML(w, http.StatusOK, "domain/info", map[string]interface{}{"Domain": domain, "Links": urls})
+	doRender(w, "domain/info", "Domain", domain, "Links", urls)
 }

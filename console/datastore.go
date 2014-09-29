@@ -16,15 +16,9 @@ type DataStore interface {
 	Close()
 	ListLinkDomains() ([]string, error)
 	LinksForDomain(domain string) ([]UrlInfo, error)
-	//Query(cql string, args ...interface{}) *gocql.Iter
 }
 
 var DS DataStore
-
-func SetDataSource(ds DataStore) {
-	DS = ds
-	return
-}
 
 //
 // Spoof data source
@@ -37,9 +31,11 @@ func NewSpoofDataSource() (*SpoofDataSource, error) {
 }
 
 func (ds *SpoofDataSource) Close() {}
+
 func (ds *SpoofDataSource) ListLinkDomains() ([]string, error) {
 	return []string{"test1.org", "test2.com"}, nil
 }
+
 func (ds *SpoofDataSource) LinksForDomain(domain string) ([]UrlInfo, error) {
 	return []UrlInfo{
 		UrlInfo{"http://foo.bar.com", time.Now().AddDate(0, 0, -30)},
