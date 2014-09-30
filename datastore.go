@@ -10,8 +10,8 @@ import (
 
 	"code.google.com/p/log4go"
 
+	"github.com/dropbox/godropbox/container/lrucache"
 	"github.com/gocql/gocql"
-	"github.com/hashicorp/golang-lru"
 )
 
 // Datastore defines the interface for an object to be used as walker's datastore.
@@ -64,7 +64,7 @@ type CassandraDatastore struct {
 	mu      sync.Mutex
 
 	// A cache for domains we've already verified exist in domain_info
-	addedDomains *lru.Cache
+	addedDomains *lrucache.LRUCache
 }
 
 func GetCassandraConfig() *gocql.ClusterConfig {
@@ -82,11 +82,7 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create cassandra datastore: %v", err)
 	}
-	ds.addedDomains, err = lru.New(Config.AddedDomainsCacheSize)
-	if err != nil {
-		return nil, fmt.Errorf("Could not create LRU cache with size %v: %v",
-			Config.AddedDomainsCacheSize, err)
-	}
+	ds.addedDomains = lrucache.New(Config.AddedDomainsCacheSize)
 	return ds, nil
 }
 
@@ -273,7 +269,7 @@ func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 			log4go.Error("Failed to add new domain %v: %v", domain, err)
 		}
 	}
-	ds.addedDomains.Add(domain, nil)
+	ds.addedDomains.Set(domain, nil)
 }
 
 func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*URL, err error) {
