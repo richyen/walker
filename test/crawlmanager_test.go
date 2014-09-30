@@ -140,3 +140,40 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	ds.AssertExpectations(t)
 	h.AssertExpectations(t)
 }
+
+func TestFetcherBlacklistsPrivateIPs(t *testing.T) {
+	orig := walker.Config.BlacklistPrivateIPs
+	defer func() { walker.Config.BlacklistPrivateIPs = orig }()
+	walker.Config.BlacklistPrivateIPs = true
+
+	ds := &MockDatastore{}
+	ds.On("ClaimNewHost").Return("private.com").Once()
+	ds.On("UnclaimHost", "private.com").Return()
+	ds.On("ClaimNewHost").Return("")
+
+	h := &MockHandler{}
+
+	rs, err := NewMockRemoteServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+		Transport: GetFakeTransport(),
+	}
+
+	go manager.Start()
+	time.Sleep(time.Second * 1)
+	manager.Stop()
+	rs.Stop()
+
+	if len(h.Calls) != 0 {
+		t.Error("Did not expect any handler calls due to host resolving to private IP")
+	}
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
+	ds.AssertNotCalled(t, "LinksForHost", "private.com")
+}

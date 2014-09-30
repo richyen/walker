@@ -395,20 +395,18 @@ func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 // One example of blacklisting is detection of IP addresses that resolve to
 // localhost or other bad IP ranges.
 func (f *fetcher) checkForBlacklisting(host string) bool {
-	dialer, ok := f.fm.Transport.(interface {
-		Dial(network, addr string) (net.Conn, error)
-	})
+	t, ok := f.fm.Transport.(*http.Transport)
 	if !ok {
-		// If the transport doesn't have Dial then don't block it; we can't get
-		// the IP address
+		// We need to get the transport's Dial function in order to check the
+		// IP address
 		return false
 	}
 
-	conn, err := dialer.Dial("tcp", host)
+	conn, err := t.Dial("tcp", net.JoinHostPort(host, "80"))
 	if err != nil {
 		//TODO: blacklist this domain in the datastore as couldn't connect;
 		//maybe try a few times
-		log4go.Info("Could not connect to host (%v), blacklisting", host)
+		log4go.Info("Could not connect to host (%v, %v), blacklisting", host, err)
 		return true
 	}
 	defer conn.Close()
