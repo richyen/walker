@@ -3,13 +3,15 @@ package walker
 import (
 	"bytes"
 	"fmt"
-	"github.com/iParadigms/walker/mimetools"
 	"io/ioutil"
 	"strings"
 	"sync"
 
+	"github.com/iParadigms/walker/mimetools"
+
 	"github.com/temoto/robotstxt.go"
 
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -164,6 +166,14 @@ func (fm *FetchManager) Start() {
 	}
 
 	fm.started = true
+
+	t, ok := fm.Transport.(*http.Transport)
+	if ok {
+		t.Dial = DNSCachingDial(t.Dial, Config.MaxDNSCacheEntries)
+	} else {
+		log4go.Info("Given an non-http transport, not using dns caching")
+	}
+
 	numFetchers := Config.NumSimultaneousFetchers
 	fm.fetchers = make([]*fetcher, numFetchers)
 	for i := 0; i < numFetchers; i++ {
@@ -213,7 +223,6 @@ type fetcher struct {
 func newFetcher(fm *FetchManager) *fetcher {
 	f := new(fetcher)
 	f.fm = fm
-	// Cache this globally?
 	f.httpclient = &http.Client{
 		Transport: fm.Transport,
 	}
@@ -242,6 +251,10 @@ func (f *fetcher) start() {
 		f.host = f.fm.Datastore.ClaimNewHost()
 		if f.host == "" {
 			time.Sleep(time.Second)
+			continue
+		}
+
+		if f.checkForBlacklisting(f.host) {
 			continue
 		}
 
@@ -375,6 +388,40 @@ func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 	return res, nil
 }
 
+// checkForBlacklisting returns true if this site is blacklisted or should be
+// blacklisted. If we detect that this site should be blacklisted, this
+// function will call the datastore appropriately.
+//
+// One example of blacklisting is detection of IP addresses that resolve to
+// localhost or other bad IP ranges.
+func (f *fetcher) checkForBlacklisting(host string) bool {
+	dialer, ok := f.fm.Transport.(interface {
+		Dial(network, addr string) (net.Conn, error)
+	})
+	if !ok {
+		// If the transport doesn't have Dial then don't block it; we can't get
+		// the IP address
+		return false
+	}
+
+	conn, err := dialer.Dial("tcp", host)
+	if err != nil {
+		//TODO: blacklist this domain in the datastore as couldn't connect;
+		//maybe try a few times
+		log4go.Info("Could not connect to host (%v), blacklisting", host)
+		return true
+	}
+	defer conn.Close()
+
+	if Config.BlacklistPrivateIPs && isPrivateAddr(conn.RemoteAddr().String()) {
+		//TODO: mark this domain as blacklisted  in the datastore for resolving
+		//to a private IP
+		log4go.Info("Host (%v) resolved to private IP address, blacklisting", host)
+		return true
+	}
+	return false
+}
+
 // getLinks parses the response for links, doing it's best with bad HTML.
 func getLinks(contents []byte) ([]*URL, error) {
 	utf8Reader, err := charset.NewReader(bytes.NewReader(contents), "text/html")
@@ -464,6 +511,43 @@ func isHandleable(r *http.Response, mm *mimetools.Matcher) bool {
 			return true
 		}
 	}
+	return false
+}
 
+var privateNetworks = []*net.IPNet{
+	parseCIDR("10.0.0.0/8"),
+	parseCIDR("192.168.0.0/16"),
+	parseCIDR("172.16.0.0/12"),
+	parseCIDR("127.0.0.0/8"),
+}
+
+// parseCIDR is a convenience for creating our static private IPNet ranges
+func parseCIDR(netstring string) *net.IPNet {
+	_, network, err := net.ParseCIDR(netstring)
+	if err != nil {
+		panic(err.Error())
+	}
+	return network
+}
+
+// isPrivateAddr determines whether the input address belongs to any of the
+// private networks specified in privateNetworkStrings. It returns an error
+// if the input string does not represent an IP address.
+func isPrivateAddr(addr string) bool {
+	// Remove the port number if there is one
+	if index := strings.LastIndex(addr, ":"); index != -1 {
+		addr = addr[:index]
+	}
+
+	thisIP := net.ParseIP(addr)
+	if thisIP == nil {
+		log4go.Error("Failed to parse as IP address: %v", addr)
+		return false
+	}
+	for _, network := range privateNetworks {
+		if network.Contains(thisIP) {
+			return true
+		}
+	}
 	return false
 }

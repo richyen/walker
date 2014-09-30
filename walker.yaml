@@ -13,6 +13,9 @@
 # them.
 #added_domains_cache_size: 20000
 
+# Maximum number of entries to hold when we cache domain name resolutions
+#max_dns_cache_entries: 20000
+
 # Configure the User-Agent header
 #user_agent: Walker (http://github.com/iParadigms/walker)
 
@@ -32,10 +35,13 @@
 #ignore_tags: [script, img, link]
 
 # The maximum number of links to parse from a page for further crawling.
-#max_links_per_page
+#max_links_per_page: 1000
 
 # How many simultaneous fetchers will your crawlmanager run
 #num_simultaneous_fetchers: 10
+
+# If true, walker will not crawl domains that resolve in private IP ranges
+#blacklist_private_ips: true
 
 # Cassandra configuration for the datastore.
 # Generally these are used to create a gocql.ClusterConfig object
