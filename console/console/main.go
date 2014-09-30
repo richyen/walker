@@ -10,8 +10,8 @@ import (
 )
 
 func main() {
-	//ds, err := console.NewCqlDataStore("localhost")
-	ds, err := console.NewSpoofDataSource()
+	ds, err := console.NewCqlDataStore()
+	//ds, err := console.NewSpoofDataSource()
 
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
