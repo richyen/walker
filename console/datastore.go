@@ -2,6 +2,7 @@ package console
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gocql/gocql"
@@ -22,7 +23,7 @@ type UrlInfo struct {
 type DomainInfo struct {
 	Domain            string
 	ExcludeReason     string
-	LastTimeQueued    time.Time
+	TimeQueued        time.Time
 	UuidOfQueued      string
 	NumberLinksTotal  int
 	NumberLinksQueued int
@@ -30,8 +31,8 @@ type DomainInfo struct {
 
 type LinkInfo struct {
 	Url            string
-	LastStatus     int
-	LastError      string
+	Status         int
+	Error          string
 	RobotsExcluded bool
 }
 
@@ -40,11 +41,8 @@ type LinkInfo struct {
 type DataStore interface {
 	Close()
 
-	//InsertLinks adds a set of Links to the system. The TLD+1 domain of each
-	//link is also added to the system.
 	InsertLinks(links []string) []error
-
-	ListDomains(limit int) ([]DomainInfo, error)
+	ListDomains(seed string, limit int) ([]DomainInfo, error)
 	ListWorkingDomains(limit int) ([]DomainInfo, error)
 
 	ListLinks(domain string, limit int) ([]LinkInfo, error)
@@ -89,6 +87,7 @@ type CqlDataStore struct {
 func NewCqlDataStore() (*CqlDataStore, error) {
 	ds := new(CqlDataStore)
 	ds.Cluster = gocql.NewCluster(walker.Config.Cassandra.Hosts...)
+
 	ds.Cluster.Keyspace = walker.Config.Cassandra.Keyspace
 	var err error
 	ds.Db, err = ds.Cluster.CreateSession()
@@ -99,10 +98,33 @@ func (ds *CqlDataStore) Close() {
 	ds.Db.Close()
 }
 
+//XXX: part of this is cribbed from walker.datastore.go. Code share?
+func (ds *CqlDataStore) addDomainIfNew(domain string) error {
+	var count int
+	err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
+	if err != nil {
+		return err
+	}
+
+	if count == 0 {
+		err := ds.Db.Query(`INSERT INTO domain_info (domain) VALUES (?)`, domain).Exec()
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+//NOTE: InsertLinks should try to insert as much information as possible
+//return errors for things it can't handle
 func (ds *CqlDataStore) InsertLinks(links []string) []error {
+	//
+	// Collect domains
+	//
 	var errList []error
 	var domains []string
-	var urls []walker.URL
+	var urls []*walker.URL
 	for _, link := range links {
 		url, err := walker.ParseURL(link)
 		if err != nil {
@@ -113,32 +135,256 @@ func (ds *CqlDataStore) InsertLinks(links []string) []error {
 		urls = append(urls, url)
 		domains = append(domains, domain)
 	}
+
+	//
+	// Push domain information to table. The only trick to this, is I don't add links unless
+	// the domain can be added
+	//
+	db := ds.Db
+	var seen = map[string]bool{}
+	for i := range domains {
+		d := domains[i]
+		u := urls[i]
+
+		if !seen[d] {
+			err := ds.addDomainIfNew(d)
+			if err != nil {
+				errList = append(errList, fmt.Errorf("Link %v unable to push domain: %v", u.String(), err))
+				continue
+			}
+		}
+		seen[d] = true
+		err := db.Query(`INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
+                                     VALUES (?, ?, ?, ?, ?)`, d, u.Subdomain(),
+			u.RequestURI(), u.Scheme, walker.NotYetCrawled).Exec()
+		if err != nil {
+			errList = append(errList, fmt.Errorf("Link %v unable to push to links: %v", u.String(), err))
+			continue
+		}
+
+		err = db.Query(`INSERT INTO segments (domain, subdomain, path, protocol, crawl_time)
+                                     VALUES (?, ?, ?, ?)`, d, u.Subdomain(), u.RequestURI(),
+			u.Scheme).Exec()
+		if err != nil {
+			errList = append(errList, fmt.Errorf("Link %v unable to push to segments: %v", u.String(), err))
+			continue
+		}
+	}
+
+	return errList
 }
-func (ds *CqlDataStore) ListDomains(limit int) ([]DomainInfo, error)        { UNIMP(); return nil, nil }
-func (ds *CqlDataStore) ListWorkingDomains(limit int) ([]DomainInfo, error) { UNIMP(); return nil, nil }
-func (ds *CqlDataStore) SearchDomains(prefix string, limit int) ([]DomainInfo, error) {
-	UNIMP()
-	return nil, nil
+
+func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
+	var itr *gocql.Iter
+	db := ds.Db
+
+	//NOTE: ClaimNewHost in walker.datastore.go uses priority 0, so I will as well.
+	priority := 0
+	for _, d := range dinfos {
+		var uuid gocql.UUID
+		var t time.Time
+		itr = db.Query("SELECT crawler_token, claim_time FROM domains_to_crawl WHERE priority = ? AND domain = ?", priority, d).Iter()
+		got := itr.Scan(&uuid, &t)
+		err := itr.Close()
+		if err != nil {
+			return err
+		}
+		if got {
+			d.TimeQueued = t
+			d.UuidOfQueued = uuid.String()
+		}
+	}
+
+	//
+	// Count Links
+	//
+	for _, d := range dinfos {
+		var linkCount, segmentCount int
+		itr = db.Query("SELECT count(*) FROM links WHERE domain = ?", d.Domain).Iter()
+		itr.Scan(&linkCount)
+		err := itr.Close()
+		if err != nil {
+			return err
+		}
+		d.NumberLinksTotal = linkCount
+		d.NumberLinksQueued = 0
+		if d.UuidOfQueued != "" {
+			itr = db.Query("SELECT count(*) FROM segments WHERE domain = ?", d.Domain).Iter()
+			itr.Scan(&segmentCount)
+			err := itr.Close()
+			if err != nil {
+				return err
+			}
+			d.NumberLinksQueued = segmentCount
+		}
+	}
+
+	return nil
 }
-func (ds *CqlDataStore) SearchWorkingDomains(prefix string, limit int) ([]DomainInfo, error) {
-	UNIMP()
-	return nil, nil
+
+func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error) {
+	db := ds.Db
+
+	var itr *gocql.Iter
+	if seed == "" {
+		itr = db.Query("SELECT domain, excluded, exclude_reason FROM domain_info LIMIT ?", limit).Iter()
+	} else {
+		itr = db.Query("SELECT domain, excluded, exclude_reason FROM domain_info WHERE TOKEN(domain) > TOKEN(?) LIMIT ?", seed, limit).Iter()
+	}
+
+	var dinfos []DomainInfo
+	var domain string
+	var excluded bool
+	var excludeReason string
+	for itr.Scan(&domain, &excluded, &excludeReason) {
+		if excluded && excludeReason == "" {
+			excludeReason = "Excluded"
+		}
+		dinfos = append(dinfos, DomainInfo{Domain: domain, ExcludeReason: excludeReason})
+		excludeReason = ""
+	}
+	err := itr.Close()
+	if err != nil {
+		return dinfos, err
+	}
+
+	err = ds.annotateDomainInfo(dinfos)
+
+	return dinfos, err
 }
-func (ds *CqlDataStore) ListLinks(domain string, limit int) ([]LinkInfo, error) {
-	UNIMP()
-	return nil, nil
+
+func (ds *CqlDataStore) ListWorkingDomains(seed string, limit int) ([]DomainInfo, error) {
+	db := ds.Db
+
+	var itr *gocql.Iter
+	zeroUuid := gocql.UUID{}
+	if seed == "" {
+		itr = db.Query("SELECT domain FROM domains_to_crawl WHERE crawler_token > ? OR crawler_token < ? LIMIT ?", zeroUuid, zeroUuid, limit).Iter()
+	} else {
+		itr = db.Query("SELECT domain FROM domains_to_crawl WHERE (crawler_token > ? OR crawler_token < ?) AND TOKEN(domain) > TOKEN(?) LIMIT ?",
+			zeroUuid, zeroUuid, seed, limit).Iter()
+	}
+
+	var domain string
+	var domains []string
+	for itr.Scan(&domain) {
+		domains = append(domains, domain)
+	}
+	err := itr.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	queryString := "SELECT domain, excluded, exclude_reason FROM domain_info WHERE domain IN (" +
+		strings.Join(domains, ",") +
+		")"
+
+	itr = db.Query(queryString).Iter()
+	var dinfos []DomainInfo
+	var excluded bool
+	var excludeReason string
+	for itr.Scan(&domain, &excluded, &excludeReason) {
+		if excluded && excludeReason == "" {
+			excludeReason = "Excluded"
+		}
+		dinfos = append(dinfos, DomainInfo{Domain: domain, ExcludeReason: excludeReason})
+		excludeReason = ""
+	}
+	err = itr.Close()
+	if err != nil {
+		return dinfos, err
+	}
+
+	err = ds.annotateDomainInfo(dinfos)
+
+	return dinfos, err
 }
-func (ds *CqlDataStore) ListWorkingLinks(domain string, limit int) ([]LinkInfo, error) {
-	UNIMP()
-	return nil, nil
+
+/*
+CREATE TABLE {{.Keyspace}}.links (
+  domain text, -- "google.com"
+  subdomain text, --  "www" (does not include .)
+  path text, -- "/index.hml"
+  protocol text, -- "http"
+  crawl_time timestamp, -- 0/epoch indicates initial insert (not yet fetched)
+  --port int,
+
+  status int,
+  error text,
+  fp bigint,
+  referer text,
+  redirect_url text,
+  ip text,
+  mime text,
+  encoding text,
+  robots_excluded boolean,
+  PRIMARY KEY (domain, subdomain, path, protocol, crawl_time)
+) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
+*/
+
+/*
+type LinkInfo struct {
+    Url            string
+    LastStatus     int
+    LastError      string
+    RobotsExcluded bool
 }
-func (ds *CqlDataStore) SearchLinks(domain string, subdomain string) ([]LinkInfo, error) {
-	UNIMP()
-	return nil, nil
-}
-func (ds *CqlDataStore) SearchWorkingLinks(domain string, subdomain string) ([]LinkInfo, error) {
-	UNIMP()
-	return nil, nil
+*/
+
+//XXX: seed is currently ignored
+func (ds *CqlDataStore) ListLinks(domain string, seed string, limit int) ([]LinkInfo, error) {
+	seed = "UNUSED"
+	db := ds.Db
+	itr := db.Query(`SELECT subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                                   FROM links WHERE domain = ? LIMIT ?`, domain, limit).Iter()
+
+	var subdomain, path, protocol, anerror string
+	var crawlTime time.Time
+	var robotsExcluded bool
+	var status int
+	var linfos []LinkInfo
+
+	// for now, I'm not depending on order
+	times := map[string]struct {
+		ctm time.Time
+		ind int
+	}{}
+
+	for itr.Scan(&subdomain, &path, &protocol, &crawlTime, &status, &anerror) {
+
+		u, err := walker.CreateURL(domain, subdomain, path, protocol, crawlTime)
+		if err != nil {
+			return nil, err
+		}
+		urlString := u.String()
+
+		qq, yes := times[urlString]
+
+		if yes && qq.ctm.After(crawlTime) {
+			continue
+		}
+
+		linfo := LinkInfo{
+			Url:            urlString,
+			Status:         status,
+			Error:          anerror,
+			RobotsExcluded: robotsExcluded,
+		}
+
+		if yes {
+			qq.ctm = crawlTime
+			linfos[qq.ind] = linfo
+		} else {
+			linfos = append(linfos, linfo)
+			times[urlString] = struct {
+				ctm time.Time
+				ind int
+			}{crawlTime, len(linfos) - 1}
+		}
+
+	}
+
+	return linfos, nil
 }
 
 func (ds *CqlDataStore) ListLinkDomains() ([]string, error) {

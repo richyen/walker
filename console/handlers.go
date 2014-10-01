@@ -52,7 +52,7 @@ func home(w http.ResponseWriter, req *http.Request) {
 }
 
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
-	domains, err := DS.ListLinkDomains()
+	domains, err := DS.ListDomains("", 5000)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
 		renderer.HTML(w, http.StatusInternalServerError, "domain/index", nil)
