@@ -12,14 +12,6 @@ import (
 //NOTE NOTE NOTE: I'm going to start to define a set of structs and interfaces UNDOCUMENTED.
 // will document in follow up
 
-type UrlInfo struct {
-	// url string
-	Link string
-
-	// when the url was last crawled (could be zero for uncrawled url)
-	CrawledOn time.Time
-}
-
 type DomainInfo struct {
 	Domain            string
 	ExcludeReason     string
@@ -34,47 +26,20 @@ type LinkInfo struct {
 	Status         int
 	Error          string
 	RobotsExcluded bool
+	CrawlTime      time.Time
 }
 
 //DataStore represents all the interaction the application has with the datastore.
 //
 type DataStore interface {
 	Close()
-
 	InsertLinks(links []string) []error
 	ListDomains(seed string, limit int) ([]DomainInfo, error)
-	ListWorkingDomains(limit int) ([]DomainInfo, error)
-
-	ListLinks(domain string, limit int) ([]LinkInfo, error)
-	ListWorkingLinks(domain string, limit int) ([]LinkInfo, error)
-
-	//LEGACY BELOW
-
-	//List all known domains.
-	ListLinkDomains() ([]string, error)
-
-	// LinksForDomain returns a list of urls for a given domain. If there are N,
-	// Links to return: this is represented by <0 ... N-1>. If windowStart >= 0 then
-	// the method returns <windowStart ... N-1>. If windowLen >=0 and windowStart >= 0
-	// the method returns <windowStart ... windowStart+windowLen>
-	LinksForDomain(domain string, windowStart int, windowLen int) ([]UrlInfo, error)
-
-	// WorkingDomains returns all the domains currently owned by a crawler instance
-	// (i.e. being worked on)
-	WorkingDomains(windowStart int, windowLen int) ([]string, error)
+	ListWorkingDomains(seed string, limit int) ([]DomainInfo, error)
+	ListLinks(domain string, seed string, limit int) ([]LinkInfo, error)
 }
 
 var DS DataStore
-
-func UNIMP() {
-	panic("UNIMPLEMENTED")
-}
-
-//
-// Spoof data source
-//
-
-//TBD
 
 //
 // Cassandra DataSTore
@@ -300,43 +265,53 @@ func (ds *CqlDataStore) ListWorkingDomains(seed string, limit int) ([]DomainInfo
 	return dinfos, err
 }
 
-/*
-CREATE TABLE {{.Keyspace}}.links (
-  domain text, -- "google.com"
-  subdomain text, --  "www" (does not include .)
-  path text, -- "/index.hml"
-  protocol text, -- "http"
-  crawl_time timestamp, -- 0/epoch indicates initial insert (not yet fetched)
-  --port int,
-
-  status int,
-  error text,
-  fp bigint,
-  referer text,
-  redirect_url text,
-  ip text,
-  mime text,
-  encoding text,
-  robots_excluded boolean,
-  PRIMARY KEY (domain, subdomain, path, protocol, crawl_time)
-) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
-*/
-
-/*
-type LinkInfo struct {
-    Url            string
-    LastStatus     int
-    LastError      string
-    RobotsExcluded bool
-}
-*/
+// Pagination note:
+// To paginate a single column you can do
+//
+//   SELECT a FROM table WHERE TOKEN(a) > TOKEN(startingA)
+//
+// If you have two columns though, it requires two queries
+//
+//   SELECT a,b from table WHERE TOKEN(a) == TOKEN(startingA) AND TOKEN(b) > TOKEN(startingB)
+//   SELECT a,b from table WHERE TOKEN(a) > TOKEN(startingA)
+//
+// With 3 columns it looks like this
+//
+//   SELECT a,b,c FROM table WHERE TOKEN(a) == TOKEN(startingA) AND TOKEN(b) == TOKEN(startingB) AND TOKEN(c) > TOKEN(startingC)
+//   SELECT a,b,c FROM table WHERE TOKEN(a) == TOKEN(startingA) AND TOKEN(b) > TOKEN(startingB)
+//   SELECT a,b,c FROM table WHERE TOKEN(a) > TOKEN(startingA)
+//
+// Particularly for our links table, with primary key (domain, subdomain, path, protocol, crawl_time)
+// (For right now, ignore the crawl time) we write
+//
+// SELECT * FROM links WHERE TOKEN(domain) == TOKEN(startDomain) AND TOKEN(subdomain) == TOKEN(startSubDomain) AND TOKEN(path) == TOKEN(startPath)
+//                           AND TOKEN(protocol) > TOKEN(startProtocol)
+// SELECT * FROM links WHERE TOKEN(domain) == TOKEN(startDomain) AND TOKEN(subdomain) == TOKEN(startSubDomain) AND TOKEN(path) > TOKEN(startPath)
+// SELECT * FROM links WHERE TOKEN(domain) == TOKEN(startDomain) AND TOKEN(subdomain) > TOKEN(startSubDomain)
+// SELECT * FROM links WHERE TOKEN(domain) > TOKEN(startDomain)
+//
+// Now the only piece left, is that crawl_time is part of the primary key. Generally we're only going to take the latest crawl time. But see
+// Historical query
+//
 
 //XXX: seed is currently ignored
 func (ds *CqlDataStore) ListLinks(domain string, seed string, limit int) ([]LinkInfo, error) {
-	seed = "UNUSED"
 	db := ds.Db
-	itr := db.Query(`SELECT subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+	var itr *gocql.Iter
+	if seed != "" {
+		_, err := walker.ParseURL(seed)
+		if err != nil {
+			return nil, err
+		}
+		//SEED IS IGNORED RIGHT NOW. Note above on pagination. Going to come back to this
+	}
+	if limit > 0 {
+		itr = db.Query(`SELECT subdomain, path, protocol, crawl_time, status, error, robots_excluded 
                                    FROM links WHERE domain = ? LIMIT ?`, domain, limit).Iter()
+	} else {
+		itr = db.Query(`SELECT subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                                   FROM links WHERE domain = ? `, domain).Iter()
+	}
 
 	var subdomain, path, protocol, anerror string
 	var crawlTime time.Time
@@ -369,6 +344,7 @@ func (ds *CqlDataStore) ListLinks(domain string, seed string, limit int) ([]Link
 			Status:         status,
 			Error:          anerror,
 			RobotsExcluded: robotsExcluded,
+			CrawlTime:      crawlTime,
 		}
 
 		if yes {
@@ -385,48 +361,6 @@ func (ds *CqlDataStore) ListLinks(domain string, seed string, limit int) ([]Link
 	}
 
 	return linfos, nil
-}
-
-func (ds *CqlDataStore) ListLinkDomains() ([]string, error) {
-	var domains []string
-	var domain string
-	i := ds.Db.Query(`SELECT distinct domain FROM links`).Iter()
-	for i.Scan(&domain) {
-		domains = append(domains, domain)
-	}
-	err := i.Close()
-	return domains, err
-}
-
-func (ds *CqlDataStore) LinksForDomain(domain string, windowStart int, windowLen int) ([]UrlInfo, error) {
-	i := ds.Db.Query(
-		`SELECT domain, subdomain, path, protocol, crawl_time
-            FROM links WHERE domain = ?
-            ORDER BY subdomain, path, protocol, crawl_time`,
-		domain,
-	).Iter()
-
-	var urls []UrlInfo
-	var linkdomain, subdomain, path, protocol string
-	var crawl_time time.Time
-	for i.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time) {
-		if subdomain != "" {
-			subdomain = subdomain + "."
-		}
-		url := UrlInfo{
-			Link:      fmt.Sprintf("%s://%s%s/%s", protocol, subdomain, linkdomain, path),
-			CrawledOn: crawl_time,
-		}
-		urls = append(urls, url)
-	}
-	err := i.Close()
-
-	return urls, err
-}
-
-func (ds *CqlDataStore) WorkingDomains(windowStart int, windowLen int) ([]string, error) {
-	panic("UNIMPLEMENTED")
-	return []string{}, nil
 }
 
 /*

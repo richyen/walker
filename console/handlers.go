@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"code.google.com/p/log4go"
 	"github.com/gorilla/mux"
@@ -62,16 +63,28 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	doRender(w, "listDomains", "Domains", domains)
 }
 
+type UrlInfo struct {
+	// url string
+	Link string
+
+	// when the url was last crawled (could be zero for uncrawled url)
+	CrawledOn time.Time
+}
+
 func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
-	var urls []UrlInfo
 	vars := mux.Vars(req)
 	domain := vars["domain"]
 
-	urls, err := DS.LinksForDomain(domain, -1, -1)
+	linfos, err := DS.ListLinks(domain, "", 0)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
 		renderer.HTML(w, http.StatusInternalServerError, "domain/info", nil)
 		return
+	}
+	//XXX: eventually the template will use the linfos directly: this is temporary
+	var urls []UrlInfo
+	for _, l := range linfos {
+		urls = append(urls, UrlInfo{Link: l.Url, CrawledOn: l.CrawlTime})
 	}
 	doRender(w, "domain/info", "Domain", domain, "Links", urls)
 }
