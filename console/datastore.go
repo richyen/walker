@@ -9,38 +9,74 @@ import (
 	"github.com/iParadigms/walker"
 )
 
-//NOTE NOTE NOTE: I'm going to start to define a set of structs and interfaces UNDOCUMENTED.
-// will document in follow up
-
 type DomainInfo struct {
-	Domain            string
-	ExcludeReason     string
-	TimeQueued        time.Time
-	UuidOfQueued      string
-	NumberLinksTotal  int
+	//TLD+1
+	Domain string
+
+	//Why did this domain get excluded, or empty if not excluded
+	ExcludeReason string
+
+	//When did this domain last get queued to be crawled. Or TimeQueed.IsZero() if not crawled
+	TimeQueued time.Time
+
+	//What was the UUID of the crawler that last crawled the domain
+	UuidOfQueued string
+
+	//Number of links found in this domain
+	NumberLinksTotal int
+
+	//Number of links queued to be processed for this domain
 	NumberLinksQueued int
 }
 
 type LinkInfo struct {
-	Url            string
-	Status         int
-	Error          string
+	//URL of the link
+	Url string
+
+	//Status of the GET
+	Status int
+
+	//Any error reported during the get
+	Error string
+
+	//Was this excluded by robots
 	RobotsExcluded bool
-	CrawlTime      time.Time
+
+	//When did this link get crawled
+	CrawlTime time.Time
 }
 
+//
 //DataStore represents all the interaction the application has with the datastore.
 //
+const DontSeedDomain = ""
+const DontSeedUrl = ""
+
+var DontSeedCrawlTime = time.Time{}
+
 type DataStore interface {
+	//INTERFACE NOTE: any place you see a seed variable that is a string/timestamp
+	// that represents the last value of the previous call. limit is the max number
+	// of results returned. seed and limit are used to implement pagination.
+
+	// Close the data store after you're done with it
 	Close()
+
+	// InsertLinks queues a set of URLS to be crawled
 	InsertLinks(links []string) []error
+
+	// List domains
 	ListDomains(seedDomain string, limit int) ([]DomainInfo, error)
+
+	// Same as ListDomains, but only lists the domains that are currently queued
 	ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error)
+
+	// List links from the given domain
 	ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error)
+
+	// For a given linkUrl, return the entire crawl history
 	ListLinkHistorical(linkUrl string, seedCrawlTime time.Time, limit int) ([]LinkInfo, error)
 }
-
-var DS DataStore
 
 //
 // Cassandra DataSTore
@@ -64,7 +100,7 @@ func (ds *CqlDataStore) Close() {
 	ds.Db.Close()
 }
 
-//XXX: part of this is cribbed from walker.datastore.go. Code share?
+//NOTE: part of this is cribbed from walker.datastore.go. Code share?
 func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 	var count int
 	err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
@@ -189,6 +225,10 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 }
 
 func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
+	}
+
 	db := ds.Db
 
 	var itr *gocql.Iter
@@ -220,6 +260,10 @@ func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error
 }
 
 func (ds *CqlDataStore) ListWorkingDomains(seed string, limit int) ([]DomainInfo, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
+	}
+
 	db := ds.Db
 
 	var itr *gocql.Iter
@@ -411,8 +455,11 @@ func (ds *CqlDataStore) seededListLinks(seedUrl string, limit int) ([]LinkInfo, 
 	return linfos, nil
 }
 
-//XXX: seed is currently ignored
 func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
+	}
+
 	db := ds.Db
 	if seedUrl != "" {
 		return ds.seededListLinks(seedUrl, limit)
@@ -429,6 +476,9 @@ func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]L
 }
 
 func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedCrawlTime time.Time, limit int) ([]LinkInfo, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
+	}
 	db := ds.Db
 	u, err := walker.ParseURL(linkUrl)
 	if err != nil {

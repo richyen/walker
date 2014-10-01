@@ -11,6 +11,8 @@ import (
 	"github.com/unrolled/render"
 )
 
+var DS DataStore
+
 var renderer = render.New(render.Options{
 	Layout:        "layout",
 	IndentJSON:    true,
