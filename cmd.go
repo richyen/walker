@@ -102,7 +102,30 @@ func init() {
 		Use:   "fetch",
 		Short: "start only a walker fetch manager",
 		Run: func(cmd *cobra.Command, args []string) {
-			//TODO
+			if Cmd.Datastore == nil {
+				ds, err := NewCassandraDatastore()
+				if err != nil {
+					fatalf("Failed creating Cassandra datastore: %v", err)
+				}
+				Cmd.Datastore = ds
+				Cmd.Dispatcher = &CassandraDispatcher{}
+			}
+
+			if Cmd.Handler == nil {
+				Cmd.Handler = &SimpleWriterHandler{}
+			}
+
+			manager := &FetchManager{
+				Datastore: Cmd.Datastore,
+				Handler:   Cmd.Handler,
+			}
+			go manager.Start()
+
+			sig := make(chan os.Signal)
+			signal.Notify(sig, syscall.SIGINT)
+			<-sig
+
+			manager.Stop()
 		},
 	}
 	walkerCommand.AddCommand(fetchCommand)
@@ -111,7 +134,22 @@ func init() {
 		Use:   "dispatch",
 		Short: "start only a walker dispatcher",
 		Run: func(cmd *cobra.Command, args []string) {
-			//TODO
+			if Cmd.Dispatcher == nil {
+				Cmd.Dispatcher = &CassandraDispatcher{}
+			}
+
+			go func() {
+				err := Cmd.Dispatcher.StartDispatcher()
+				if err != nil {
+					panic(err.Error())
+				}
+			}()
+
+			sig := make(chan os.Signal)
+			signal.Notify(sig, syscall.SIGINT)
+			<-sig
+
+			Cmd.Dispatcher.StopDispatcher()
 		},
 	}
 	walkerCommand.AddCommand(dispatchCommand)

@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockDatastore used for testing components that interact with the datastore
 type MockDatastore struct {
 	mock.Mock
 }
@@ -42,13 +41,26 @@ func (ds *MockDatastore) LinksForHost(domain string) <-chan *walker.URL {
 	return ch
 }
 
-// MockHandler used for testing that the crawl manager properly calls handlers
 type MockHandler struct {
 	mock.Mock
 }
 
 func (h *MockHandler) HandleResponse(fr *walker.FetchResults) {
 	h.Mock.Called(fr)
+}
+
+type MockDispatcher struct {
+	mock.Mock
+}
+
+func (d *MockDispatcher) StartDispatcher() error {
+	args := d.Mock.Called()
+	return args.Error(0)
+}
+
+func (d *MockDispatcher) StopDispatcher() error {
+	args := d.Mock.Called()
+	return args.Error(0)
 }
 
 // MockResponse is the source object used to build fake responses in
