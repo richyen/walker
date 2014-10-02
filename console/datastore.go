@@ -260,36 +260,45 @@ func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error
 	return dinfos, err
 }
 
-func (ds *CqlDataStore) ListWorkingDomains(seed string, limit int) ([]DomainInfo, error) {
+func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
 	}
 
 	db := ds.Db
 
-	var itr *gocql.Iter
-	zeroUuid := gocql.UUID{}
-	if seed == "" {
-		itr = db.Query("SELECT domain FROM domains_to_crawl WHERE crawler_token > ? OR crawler_token < ? LIMIT ?", zeroUuid, zeroUuid, limit).Iter()
-	} else {
-		itr = db.Query("SELECT domain FROM domains_to_crawl WHERE (crawler_token > ? OR crawler_token < ?) AND TOKEN(domain) > TOKEN(?) LIMIT ?",
-			zeroUuid, zeroUuid, seed, limit).Iter()
-	}
-
+	//NOTE TO READERS: CQL has no OR syntax. Which means queries that might look like this
+	//    itr = db.Query("SELECT domain FROM domains_to_crawl WHERE crawler_token > ? OR crawler_token < ? LIMIT ?", zeroUuid, zeroUuid, limit).Iter()
+	//won't compile. I hope that domains to crawl isn't that big.
+	itr := db.Query("SELECT domain FROM domains_to_crawl").Iter()
 	var domain string
 	var domains []string
 	for itr.Scan(&domain) {
+		if seedDomain != "" && domain <= seedDomain {
+			continue
+		}
 		domains = append(domains, domain)
+		if len(domains) >= limit {
+			break
+		}
 	}
 	err := itr.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	queryString := "SELECT domain, excluded, exclude_reason FROM domain_info WHERE domain IN (" +
-		strings.Join(domains, ",") +
-		")"
+	if len(domains) == 0 {
+		return []DomainInfo{}, nil
+	}
 
+	//NOTE: this query is not going to be efficient for large domains_to_crawl
+	quotedDomains := []string{}
+	for _, d := range domains {
+		quotedDomains = append(quotedDomains, "'"+d+"'")
+	}
+	queryString := "SELECT domain, excluded, exclude_reason FROM domain_info WHERE domain IN (" +
+		strings.Join(quotedDomains, ",") +
+		")"
 	itr = db.Query(queryString).Iter()
 	var dinfos []DomainInfo
 	var excluded bool

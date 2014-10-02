@@ -41,6 +41,7 @@ func getDs(t *testing.T) *console.CqlDataStore {
 
 var fooTime = time.Now().AddDate(0, 0, -1)
 var testTime = time.Now().AddDate(0, 0, -2)
+var bazUuid, _ = gocql.RandomUUID()
 
 func populate(t *testing.T, ds *console.CqlDataStore) {
 	db := ds.Db
@@ -85,6 +86,11 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 		db.Query(insertLink, "foo.com", "sub", "page2.html", "http", fooTime, 200, "", false),
 
 		db.Query(insertDomainInfo, "bar.com", true, "Didn't like it", ""),
+
+		db.Query(insertDomainInfo, "baz.com", false, "", ""),
+		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertDomainToCrawl, "baz.com", bazUuid, 0, testTime),
+		db.Query(insertSegment, "baz.com", "sub", "page1.html", "http"),
 	}
 	for _, q := range queries {
 		err := q.Exec()
@@ -94,7 +100,7 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	}
 
 	// //TEST
-	// itr := db.Query("SELECT domain FROM domain_info LIMIT 2").Iter()
+	// itr := db.Query("SELECT domain FROM domain_info").Iter()
 	// var domain string
 	// for itr.Scan(&domain) {
 	// 	fmt.Printf("DOMAIN: %v\n", domain)
@@ -103,7 +109,7 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	// if err != nil {
 	// 	panic(err)
 	// }
-
+	// return
 	// itr = db.Query("SELECT domain FROM domain_info").Iter()
 	// for itr.Scan(&domain) {
 	// 	fmt.Printf("DOMAIN(2): %v\n", domain)
@@ -124,6 +130,7 @@ type domainTest struct {
 }
 
 type linkTest struct {
+	omittest bool
 	tag      string
 	domain   string
 	seed     string
@@ -151,30 +158,39 @@ func timeClose(l time.Time, r time.Time) bool {
 	return delta <= EPSILON_SECONDS
 }
 
+//Shared Domain Information
+var bazDomain = console.DomainInfo{
+	Domain:            "baz.com",
+	NumberLinksTotal:  1,
+	NumberLinksQueued: 1,
+	TimeQueued:        testTime,
+	UuidOfQueued:      bazUuid.String(),
+}
+
+var fooDomain = console.DomainInfo{
+	Domain:            "foo.com",
+	NumberLinksTotal:  2,
+	NumberLinksQueued: 0,
+}
+
+var barDomain = console.DomainInfo{
+	Domain:            "bar.com",
+	NumberLinksTotal:  0,
+	NumberLinksQueued: 0,
+	ExcludeReason:     "Didn't like it",
+}
+
+var testDomain = console.DomainInfo{
+	Domain:            "test.com",
+	NumberLinksTotal:  8,
+	NumberLinksQueued: 2,
+	TimeQueued:        testTime,
+	UuidOfQueued:      gocql.UUID{}.String(),
+}
+
 func TestListDomains(t *testing.T) {
 	store := getDs(t)
 	populate(t, store)
-
-	fooDomain := console.DomainInfo{
-		Domain:            "foo.com",
-		NumberLinksTotal:  2,
-		NumberLinksQueued: 0,
-	}
-
-	barDomain := console.DomainInfo{
-		Domain:            "bar.com",
-		NumberLinksTotal:  0,
-		NumberLinksQueued: 0,
-		ExcludeReason:     "Didn't like it",
-	}
-
-	testDomain := console.DomainInfo{
-		Domain:            "test.com",
-		NumberLinksTotal:  8,
-		NumberLinksQueued: 2,
-		TimeQueued:        testTime,
-		UuidOfQueued:      gocql.UUID{}.String(),
-	}
 
 	tests := []domainTest{
 		domainTest{
@@ -182,6 +198,7 @@ func TestListDomains(t *testing.T) {
 			seed:  console.DontSeedDomain,
 			limit: LIM,
 			expected: []console.DomainInfo{
+				bazDomain,
 				fooDomain,
 				barDomain,
 				testDomain,
@@ -193,7 +210,7 @@ func TestListDomains(t *testing.T) {
 			seed:  console.DontSeedDomain,
 			limit: 1,
 			expected: []console.DomainInfo{
-				fooDomain,
+				bazDomain,
 			},
 		},
 
@@ -265,10 +282,10 @@ func TestListDomains(t *testing.T) {
 			}
 		}
 	}
+	store.Close()
 }
 
 func TestListWorkingDomains(t *testing.T) {
-	return
 	store := getDs(t)
 	populate(t, store)
 
@@ -278,11 +295,8 @@ func TestListWorkingDomains(t *testing.T) {
 			seed:  console.DontSeedDomain,
 			limit: LIM,
 			expected: []console.DomainInfo{
-				console.DomainInfo{
-					Domain:            "test.com",
-					NumberLinksTotal:  2,
-					NumberLinksQueued: 2,
-				},
+				bazDomain,
+				testDomain,
 			},
 		},
 
@@ -291,30 +305,28 @@ func TestListWorkingDomains(t *testing.T) {
 			seed:  console.DontSeedDomain,
 			limit: 1,
 			expected: []console.DomainInfo{
-				console.DomainInfo{
-					Domain:            "test.com",
-					NumberLinksTotal:  2,
-					NumberLinksQueued: 2,
-				},
+				bazDomain,
 			},
 		},
 
 		domainTest{
-			tag:      "Seeded Pull",
-			seed:     "test.com",
-			limit:    LIM,
-			expected: []console.DomainInfo{},
+			tag:   "Seeded Pull",
+			seed:  "baz.com",
+			limit: LIM,
+			expected: []console.DomainInfo{
+				testDomain,
+			},
 		},
 	}
 
 	for _, test := range tests {
 		dinfos, err := store.ListWorkingDomains(test.seed, test.limit)
 		if err != nil {
-			t.Errorf("ListDomains direct error %v", err)
+			t.Errorf("ListWorkingDomains direct error %v", err)
 			continue
 		}
 		if len(dinfos) != len(test.expected) {
-			t.Errorf("ListDomains length mismatch")
+			t.Errorf("ListWorkingDomains length mismatch: got %d, expected %d", len(dinfos), len(test.expected))
 			continue
 		}
 		for i := range dinfos {
@@ -329,7 +341,7 @@ func TestListWorkingDomains(t *testing.T) {
 			if got.NumberLinksQueued != exp.NumberLinksQueued {
 				t.Errorf("ListWorkingDomains %s NumberLinksQueued mismatch got %v, expected %v", test.tag, got.NumberLinksQueued, exp.NumberLinksQueued)
 			}
-			if !got.TimeQueued.Equal(exp.TimeQueued) {
+			if !timeClose(got.TimeQueued, exp.TimeQueued) {
 				t.Errorf("ListWorkingDomains %s TimeQueued mismatch got %v, expected %v", test.tag, got.TimeQueued, exp.TimeQueued)
 			}
 			if got.UuidOfQueued != exp.UuidOfQueued {
@@ -340,6 +352,7 @@ func TestListWorkingDomains(t *testing.T) {
 			}
 		}
 	}
+	store.Close()
 }
 
 func TestListLinks(t *testing.T) {
