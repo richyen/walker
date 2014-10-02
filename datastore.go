@@ -332,7 +332,7 @@ const schemaTemplate string = `-- The schema file for walker
 -- This file gets generated from a Go template so the keyspace and replication
 -- can be configured (particularly for testing purposes)
 CREATE KEYSPACE {{.Keyspace}}
-WITH REPLICATION = { 'class': 'NetworkTopologyStrategy', 'DC1': {{.ReplicationFactor}} };
+WITH REPLICATION = { 'class': 'SimpleStrategy', 'replication_factor': {{.ReplicationFactor}} };
 
 CREATE TABLE {{.Keyspace}}.links (
   domain text, -- "google.com"
