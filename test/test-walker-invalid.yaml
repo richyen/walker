@@ -1,0 +1,10 @@
+# The Walker Configuration File
+#
+# This test file has invalid yaml syntax. Insane.
+
+default_crawl_delay: 0
+num_simultaneous_fetchers: 1
+blacklist_private_ips: false
+cassandra:
+    keyspace: "walker_test"
+    replication_factor: 1
