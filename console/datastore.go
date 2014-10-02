@@ -22,10 +22,10 @@ type DomainInfo struct {
 	//What was the UUID of the crawler that last crawled the domain
 	UuidOfQueued string
 
-	//Number of links found in this domain
+	//Number of (unique) links found in this domain
 	NumberLinksTotal int
 
-	//Number of links queued to be processed for this domain
+	//Number of (unique) links queued to be processed for this domain
 	NumberLinksQueued int
 }
 
@@ -105,6 +105,7 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 	var count int
 	err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
 	if err != nil {
+
 		return err
 	}
 
@@ -176,6 +177,25 @@ func (ds *CqlDataStore) InsertLinks(links []string) []error {
 	return errList
 }
 
+func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, error) {
+	db := ds.Db
+	q := fmt.Sprintf("SELECT subdomain, path, protocol, crawl_time FROM %s WHERE domain = ?", table)
+	itr := db.Query(q, domain).Iter()
+
+	var subdomain, path, protocol string
+	var crawlTime time.Time
+	found := map[string]time.Time{}
+	for itr.Scan(&subdomain, &path, &protocol, &crawlTime) {
+		key := fmt.Sprintf("%s : %s : %s", subdomain, path, protocol)
+		t, foundT := found[key]
+		if !foundT || t.Before(crawlTime) {
+			found[key] = crawlTime
+		}
+	}
+	err := itr.Close()
+	return len(found), err
+}
+
 func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 	var itr *gocql.Iter
 	db := ds.Db
@@ -203,19 +223,16 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 	//
 	for i := range dinfos {
 		d := &dinfos[i]
-		var linkCount, segmentCount int
-		itr = db.Query("SELECT count(*) FROM links WHERE domain = ?", d.Domain).Iter()
-		itr.Scan(&linkCount)
-		err := itr.Close()
+
+		linkCount, err := ds.countUniqueLinks(d.Domain, "links")
 		if err != nil {
 			return err
 		}
 		d.NumberLinksTotal = linkCount
+
 		d.NumberLinksQueued = 0
 		if d.UuidOfQueued != "" {
-			itr = db.Query("SELECT count(*) FROM segments WHERE domain = ?", d.Domain).Iter()
-			itr.Scan(&segmentCount)
-			err := itr.Close()
+			segmentCount, err := ds.countUniqueLinks(d.Domain, "segments")
 			if err != nil {
 				return err
 			}

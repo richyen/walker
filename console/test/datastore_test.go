@@ -109,6 +109,34 @@ var testComLinkHash = map[string]console.LinkInfo{
 	},
 }
 
+var bazLinkHistory = []console.LinkInfo{
+	console.LinkInfo{
+		Url:       "https://sub.baz.com/page1.html",
+		Status:    200,
+		CrawlTime: time.Now().AddDate(0, 0, -1),
+	},
+	console.LinkInfo{
+		Url:       "https://sub.baz.com/page1.html",
+		Status:    200,
+		CrawlTime: time.Now().AddDate(0, 0, -2),
+	},
+	console.LinkInfo{
+		Url:       "https://sub.baz.com/page1.html",
+		Status:    200,
+		CrawlTime: time.Now().AddDate(0, 0, -3),
+	},
+	console.LinkInfo{
+		Url:       "https://sub.baz.com/page1.html",
+		Status:    200,
+		CrawlTime: time.Now().AddDate(0, 0, -4),
+	},
+	console.LinkInfo{
+		Url:       "https://sub.baz.com/page1.html",
+		Status:    200,
+		CrawlTime: time.Now().AddDate(0, 0, -5),
+	},
+}
+
 func populate(t *testing.T, ds *console.CqlDataStore) {
 	db := ds.Db
 
@@ -155,6 +183,12 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 
 		db.Query(insertDomainInfo, "baz.com", false, "", ""),
 		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[0].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[1].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[2].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[3].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[4].CrawlTime, 200, "", false),
+
 		db.Query(insertDomainToCrawl, "baz.com", bazUuid, 0, testTime),
 		db.Query(insertSegment, "baz.com", "sub", "page1.html", "http"),
 	}
@@ -184,27 +218,6 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	if err != nil {
 		panic(fmt.Errorf("testComLinkOrder iterator error: %v", err))
 	}
-
-	// //TEST
-	// itr := db.Query("SELECT domain FROM domain_info").Iter()
-	// var domain string
-	// for itr.Scan(&domain) {
-	// 	fmt.Printf("DOMAIN: %v\n", domain)
-	// }
-	// err := itr.Close()
-	// if err != nil {
-	// 	panic(err)
-	// }
-	// return
-	// itr = db.Query("SELECT domain FROM domain_info").Iter()
-	// for itr.Scan(&domain) {
-	// 	fmt.Printf("DOMAIN(2): %v\n", domain)
-	// }
-	// err = itr.Close()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
 }
 
 type domainTest struct {
