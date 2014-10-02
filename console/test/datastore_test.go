@@ -109,29 +109,36 @@ var testComLinkHash = map[string]console.LinkInfo{
 	},
 }
 
-var bazLinkHistory = []console.LinkInfo{
+var bazLinkHistoryOrder []console.LinkInfo
+
+var bazLinkHistoryInit = []console.LinkInfo{
 	console.LinkInfo{
-		Url:       "https://sub.baz.com/page1.html",
+		Url:       "http://sub.baz.com/page1.html",
+		Status:    200,
+		CrawlTime: walker.NotYetCrawled,
+	},
+	console.LinkInfo{
+		Url:       "http://sub.baz.com/page1.html",
 		Status:    200,
 		CrawlTime: time.Now().AddDate(0, 0, -1),
 	},
 	console.LinkInfo{
-		Url:       "https://sub.baz.com/page1.html",
+		Url:       "http://sub.baz.com/page1.html",
 		Status:    200,
 		CrawlTime: time.Now().AddDate(0, 0, -2),
 	},
 	console.LinkInfo{
-		Url:       "https://sub.baz.com/page1.html",
+		Url:       "http://sub.baz.com/page1.html",
 		Status:    200,
 		CrawlTime: time.Now().AddDate(0, 0, -3),
 	},
 	console.LinkInfo{
-		Url:       "https://sub.baz.com/page1.html",
+		Url:       "http://sub.baz.com/page1.html",
 		Status:    200,
 		CrawlTime: time.Now().AddDate(0, 0, -4),
 	},
 	console.LinkInfo{
-		Url:       "https://sub.baz.com/page1.html",
+		Url:       "http://sub.baz.com/page1.html",
 		Status:    200,
 		CrawlTime: time.Now().AddDate(0, 0, -5),
 	},
@@ -161,33 +168,33 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 
 	queries := []*gocql.Query{
 		db.Query(insertDomainInfo, "test.com", false, "", ""),
-		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.NotYetCrawled, 200, "", false),
-		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.NotYetCrawled, 200, "", false),
-		db.Query(insertLink, "test.com", "", "page3.html", "http", walker.NotYetCrawled, 404, "", false),
-		db.Query(insertLink, "test.com", "", "page4.html", "http", walker.NotYetCrawled, 200, "An Error", false),
-		db.Query(insertLink, "test.com", "", "page5.html", "http", walker.NotYetCrawled, 200, "", true),
+		db.Query(insertLink, "test.com", "", "/page1.html", "http", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertLink, "test.com", "", "/page2.html", "http", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertLink, "test.com", "", "/page3.html", "http", walker.NotYetCrawled, 404, "", false),
+		db.Query(insertLink, "test.com", "", "/page4.html", "http", walker.NotYetCrawled, 200, "An Error", false),
+		db.Query(insertLink, "test.com", "", "/page5.html", "http", walker.NotYetCrawled, 200, "", true),
 
-		db.Query(insertLink, "test.com", "sub", "page6.html", "http", walker.NotYetCrawled, 200, "", false),
-		db.Query(insertLink, "test.com", "sub", "page7.html", "https", walker.NotYetCrawled, 200, "", false),
-		db.Query(insertLink, "test.com", "sub", "page8.html", "https", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertLink, "test.com", "sub", "/page6.html", "http", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertLink, "test.com", "sub", "/page7.html", "https", walker.NotYetCrawled, 200, "", false),
+		db.Query(insertLink, "test.com", "sub", "/page8.html", "https", walker.NotYetCrawled, 200, "", false),
 
 		db.Query(insertDomainToCrawl, "test.com", gocql.UUID{}, 0, testTime),
-		db.Query(insertSegment, "test.com", "", "page1.html", "http"),
-		db.Query(insertSegment, "test.com", "", "page2.html", "http"),
+		db.Query(insertSegment, "test.com", "", "/page1.html", "http"),
+		db.Query(insertSegment, "test.com", "", "/page2.html", "http"),
 
 		db.Query(insertDomainInfo, "foo.com", false, "", ""),
-		db.Query(insertLink, "foo.com", "sub", "page1.html", "http", fooTime, 200, "", false),
-		db.Query(insertLink, "foo.com", "sub", "page2.html", "http", fooTime, 200, "", false),
+		db.Query(insertLink, "foo.com", "sub", "/page1.html", "http", fooTime, 200, "", false),
+		db.Query(insertLink, "foo.com", "sub", "/page2.html", "http", fooTime, 200, "", false),
 
 		db.Query(insertDomainInfo, "bar.com", true, "Didn't like it", ""),
 
 		db.Query(insertDomainInfo, "baz.com", false, "", ""),
-		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", walker.NotYetCrawled, 200, "", false),
-		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[0].CrawlTime, 200, "", false),
-		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[1].CrawlTime, 200, "", false),
-		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[2].CrawlTime, 200, "", false),
-		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[3].CrawlTime, 200, "", false),
-		db.Query(insertLink, "baz.com", "sub", "page1.html", "http", bazLinkHistory[4].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[0].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[1].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[2].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[3].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[4].CrawlTime, 200, "", false),
+		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[5].CrawlTime, 200, "", false),
 
 		db.Query(insertDomainToCrawl, "baz.com", bazUuid, 0, testTime),
 		db.Query(insertSegment, "baz.com", "sub", "page1.html", "http"),
@@ -218,6 +225,36 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	if err != nil {
 		panic(fmt.Errorf("testComLinkOrder iterator error: %v", err))
 	}
+
+	//
+	// Need to record order for baz
+	//
+	itr = db.Query("SELECT crawl_time FROM links WHERE domain = 'baz.com'").Iter()
+	var crawlTime time.Time
+	bazLinkHistoryOrder = nil
+	for itr.Scan(&crawlTime) {
+		bestIndex := -1
+		var bestDiff int64 = 99999999
+		for i := range bazLinkHistoryInit {
+			e := &bazLinkHistoryInit[i]
+			delta := crawlTime.Unix() - e.CrawlTime.Unix()
+			if delta < 0 {
+				delta = -delta
+			}
+			if delta < bestDiff {
+				bestIndex = i
+				bestDiff = delta
+			}
+		}
+		if bestIndex < 0 {
+			panic("UNEXPECTED ERROR")
+		}
+		bazLinkHistoryOrder = append(bazLinkHistoryOrder, bazLinkHistoryInit[bestIndex])
+	}
+	err = itr.Close()
+	if err != nil {
+		panic(fmt.Errorf("bazLinkHistoryOrder iterator error: %v", err))
+	}
 }
 
 type domainTest struct {
@@ -232,6 +269,7 @@ type linkTest struct {
 	omittest bool
 	tag      string
 	domain   string
+	histUrl  string
 	seed     int
 	limit    int
 	expected []console.LinkInfo
@@ -555,6 +593,82 @@ func TestListLinks(t *testing.T) {
 	}
 
 	store.Close()
+}
+func TestListLinkHistorical(t *testing.T) {
+	store := getDs(t)
+	populate(t, store)
+	tests := []linkTest{
+		linkTest{
+			tag:      "full read",
+			histUrl:  "http://sub.baz.com/page1.html",
+			seed:     console.DontSeedIndex,
+			limit:    LIM,
+			expected: bazLinkHistoryOrder,
+		},
+
+		linkTest{
+			tag:      "limit",
+			histUrl:  "http://sub.baz.com/page1.html",
+			seed:     console.DontSeedIndex,
+			limit:    4,
+			expected: bazLinkHistoryOrder[:4],
+		},
+
+		linkTest{
+			tag:      "seed",
+			histUrl:  "http://sub.baz.com/page1.html",
+			seed:     4,
+			limit:    LIM,
+			expected: bazLinkHistoryOrder[4:],
+		},
+
+		linkTest{
+			tag:      "seed & limit",
+			histUrl:  "http://sub.baz.com/page1.html",
+			seed:     1,
+			limit:    2,
+			expected: bazLinkHistoryOrder[1:3],
+		},
+	}
+
+	// run the tests
+	for _, test := range tests {
+		if test.omittest {
+			continue
+		}
+		linfos, nextSeed, err := store.ListLinkHistorical(test.histUrl, test.seed, test.limit)
+		if err != nil {
+			t.Errorf("ListLinkHistorical for tag %s direct error %v", test.tag, err)
+			continue
+		}
+		if nextSeed != test.seed+len(linfos) {
+			t.Errorf("ListLinkHistorical for tag %s bad nextSeed got %d, expected %d", test.tag, nextSeed, test.seed+len(linfos))
+			continue
+		}
+		if len(linfos) != len(test.expected) {
+			t.Errorf("ListLinkHistorical for tag %s length mismatch got %d, expected %d", test.tag, len(linfos), len(test.expected))
+			continue
+		}
+		for i := range linfos {
+			got := linfos[i]
+			exp := test.expected[i]
+			if got.Url != exp.Url {
+				t.Errorf("ListLinkHistorical %s Url mismatch got %v, expected %v", test.tag, got.Url, exp.Url)
+			}
+			if got.Status != exp.Status {
+				t.Errorf("ListLinkHistorical %s Status mismatch got %v, expected %v", test.tag, got.Status, exp.Status)
+			}
+			if got.Error != exp.Error {
+				t.Errorf("ListLinkHistorical %s Error mismatch got %v, expected %v", test.tag, got.Error, exp.Error)
+			}
+			if got.RobotsExcluded != exp.RobotsExcluded {
+				t.Errorf("ListLinkHistorical %s RobotsExcluded mismatch got %v, expected %v", test.tag, got.RobotsExcluded, exp.RobotsExcluded)
+			}
+			if !timeClose(got.CrawlTime, exp.CrawlTime) {
+				t.Errorf("ListLinkHistorical %s CrawlTime mismatch got %v, expected %v", test.tag, got.CrawlTime, exp.CrawlTime)
+			}
+		}
+	}
 }
 
 func TestInsertLinks(t *testing.T) {
