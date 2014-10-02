@@ -42,6 +42,72 @@ func getDs(t *testing.T) *console.CqlDataStore {
 var fooTime = time.Now().AddDate(0, 0, -1)
 var testTime = time.Now().AddDate(0, 0, -2)
 var bazUuid, _ = gocql.RandomUUID()
+var testComLinkOrder []console.LinkInfo
+var testComLinkHash = map[string]console.LinkInfo{
+	"http://test.com/page1.html": console.LinkInfo{
+		Url:            "http://test.com/page1.html",
+		Status:         200,
+		Error:          "",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"http://test.com/page2.html": console.LinkInfo{
+		Url:            "http://test.com/page2.html",
+		Status:         200,
+		Error:          "",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"http://test.com/page3.html": console.LinkInfo{
+		Url:            "http://test.com/page3.html",
+		Status:         404,
+		Error:          "",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"http://test.com/page4.html": console.LinkInfo{
+		Url:            "http://test.com/page4.html",
+		Status:         200,
+		Error:          "An Error",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"http://test.com/page5.html": console.LinkInfo{
+		Url:            "http://test.com/page5.html",
+		Status:         200,
+		Error:          "",
+		RobotsExcluded: true,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"http://sub.test.com/page6.html": console.LinkInfo{
+		Url:            "http://sub.test.com/page6.html",
+		Status:         200,
+		Error:          "",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"https://sub.test.com/page7.html": console.LinkInfo{
+		Url:            "https://sub.test.com/page7.html",
+		Status:         200,
+		Error:          "",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+
+	"https://sub.test.com/page8.html": console.LinkInfo{
+		Url:            "https://sub.test.com/page8.html",
+		Status:         200,
+		Error:          "",
+		RobotsExcluded: false,
+		CrawlTime:      walker.NotYetCrawled,
+	},
+}
 
 func populate(t *testing.T, ds *console.CqlDataStore) {
 	db := ds.Db
@@ -99,6 +165,26 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 		}
 	}
 
+	//
+	// Need to record the order that the test.com urls come off on
+	//
+	itr := db.Query("SELECT domain, subdomain, path, protocol FROM links WHERE domain = 'test.com'").Iter()
+	var domain, subdomain, path, protocol string
+	testComLinkOrder = nil
+	for itr.Scan(&domain, &subdomain, &path, &protocol) {
+		u, _ := walker.CreateURL(domain, subdomain, path, protocol, walker.NotYetCrawled)
+		urlString := u.String()
+		linfo, gotLinfo := testComLinkHash[urlString]
+		if !gotLinfo {
+			panic(fmt.Errorf("testComLinkOrder can't find url: %v", urlString))
+		}
+		testComLinkOrder = append(testComLinkOrder, linfo)
+	}
+	err := itr.Close()
+	if err != nil {
+		panic(fmt.Errorf("testComLinkOrder iterator error: %v", err))
+	}
+
 	// //TEST
 	// itr := db.Query("SELECT domain FROM domain_info").Iter()
 	// var domain string
@@ -133,7 +219,7 @@ type linkTest struct {
 	omittest bool
 	tag      string
 	domain   string
-	seed     string
+	seed     int
 	limit    int
 	expected []console.LinkInfo
 }
@@ -322,7 +408,7 @@ func TestListWorkingDomains(t *testing.T) {
 	for _, test := range tests {
 		dinfos, err := store.ListWorkingDomains(test.seed, test.limit)
 		if err != nil {
-			t.Errorf("ListWorkingDomains direct error %v", err)
+			t.Errorf("ListWorkingDomains for tag %s direct error %v", test.tag, err)
 			continue
 		}
 		if len(dinfos) != len(test.expected) {
@@ -356,62 +442,21 @@ func TestListWorkingDomains(t *testing.T) {
 }
 
 func TestListLinks(t *testing.T) {
-	return
 	store := getDs(t)
 	populate(t, store)
 	tests := []linkTest{
 		linkTest{
-			tag:    "Basic Pull",
-			domain: "test.com",
-			seed:   console.DontSeedUrl,
-			limit:  5,
-			expected: []console.LinkInfo{
-				console.LinkInfo{
-					Url:            "http://test.com/page1.html",
-					Status:         200,
-					Error:          "",
-					RobotsExcluded: false,
-					CrawlTime:      walker.NotYetCrawled,
-				},
-
-				console.LinkInfo{
-					Url:            "http://test.com/page2.html",
-					Status:         200,
-					Error:          "",
-					RobotsExcluded: false,
-					CrawlTime:      walker.NotYetCrawled,
-				},
-
-				console.LinkInfo{
-					Url:            "http://test.com/page3.html",
-					Status:         404,
-					Error:          "",
-					RobotsExcluded: false,
-					CrawlTime:      walker.NotYetCrawled,
-				},
-
-				console.LinkInfo{
-					Url:            "http://test.com/page4.html",
-					Status:         200,
-					Error:          "An Error",
-					RobotsExcluded: false,
-					CrawlTime:      walker.NotYetCrawled,
-				},
-
-				console.LinkInfo{
-					Url:            "http://test.com/page5.html",
-					Status:         200,
-					Error:          "",
-					RobotsExcluded: true,
-					CrawlTime:      walker.NotYetCrawled,
-				},
-			},
+			tag:      "Basic Pull",
+			domain:   "test.com",
+			seed:     console.DontSeedIndex,
+			limit:    LIM,
+			expected: testComLinkOrder,
 		},
 
 		linkTest{
 			tag:    "foo pull",
 			domain: "foo.com",
-			seed:   console.DontSeedUrl,
+			seed:   console.DontSeedIndex,
 			limit:  LIM,
 			expected: []console.LinkInfo{
 				console.LinkInfo{
@@ -435,68 +480,68 @@ func TestListLinks(t *testing.T) {
 		linkTest{
 			tag:      "bar pull",
 			domain:   "bar.com",
-			seed:     console.DontSeedUrl,
+			seed:     console.DontSeedIndex,
 			limit:    LIM,
 			expected: []console.LinkInfo{},
 		},
 
 		linkTest{
-			tag:    "seeded pull",
-			domain: "test.com",
-			seed:   "http://sub.test.com/page6.html",
-			limit:  2,
-			expected: []console.LinkInfo{
-				console.LinkInfo{
-					Url:            "http://sub.test.com/page7.html",
-					Status:         200,
-					Error:          "",
-					RobotsExcluded: false,
-					CrawlTime:      walker.NotYetCrawled,
-				},
+			tag:      "seeded pull",
+			domain:   "test.com",
+			seed:     len(testComLinkOrder) / 2,
+			limit:    LIM,
+			expected: testComLinkOrder[len(testComLinkOrder)/2:],
+		},
 
-				console.LinkInfo{
-					Url:            "http://sub.test.com/page8.html",
-					Status:         200,
-					Error:          "",
-					RobotsExcluded: false,
-					CrawlTime:      walker.NotYetCrawled,
-				},
-			},
+		linkTest{
+			tag:      "seeded pull with limit",
+			domain:   "test.com",
+			seed:     len(testComLinkOrder) / 2,
+			limit:    1,
+			expected: testComLinkOrder[len(testComLinkOrder)/2 : len(testComLinkOrder)/2+1],
 		},
 	}
 
 	// run the tests
 	for _, test := range tests {
-		linfos, err := store.ListLinks(test.domain, test.seed, test.limit)
+		if test.omittest {
+			continue
+		}
+		linfos, nextSeed, err := store.ListLinks(test.domain, test.seed, test.limit)
 		if err != nil {
-			t.Errorf("ListLinks direct error %v", err)
+			t.Errorf("ListLinks for tag %s direct error %v", test.tag, err)
+			continue
+		}
+		if nextSeed != test.seed+len(linfos) {
+			t.Errorf("ListLinks for tag %s bad nextSeed got %d, expected %d", test.tag, nextSeed, test.seed+len(linfos))
 			continue
 		}
 		if len(linfos) != len(test.expected) {
-			t.Errorf("ListLinks length mismatch")
+			t.Errorf("ListLinks for tag %s length mismatch got %d, expected %d", test.tag, len(linfos), len(test.expected))
 			continue
 		}
 		for i := range linfos {
 			got := linfos[i]
 			exp := test.expected[i]
 			if got.Url != exp.Url {
-				t.Errorf("ListLinks %s Url mismatch %s vs %s", test.tag, got.Url, exp.Url)
+				t.Errorf("ListLinks %s Url mismatch got %v, expected %v", test.tag, got.Url, exp.Url)
 			}
 			if got.Status != exp.Status {
-				t.Errorf("ListLinks %s Status mismatch %d vs %d", test.tag, got.Status, exp.Status)
+				t.Errorf("ListLinks %s Status mismatch got %v, expected %v", test.tag, got.Status, exp.Status)
 			}
 			if got.Error != exp.Error {
-				t.Errorf("ListLinks %s Error mismatch %d vs %d", test.tag, got.Error, exp.Error)
+				t.Errorf("ListLinks %s Error mismatch got %v, expected %v", test.tag, got.Error, exp.Error)
 			}
 			if got.RobotsExcluded != exp.RobotsExcluded {
-				t.Errorf("ListLinks %s RobotsExcluded mismatch %v vs %v", test.tag, got.RobotsExcluded, exp.RobotsExcluded)
+				t.Errorf("ListLinks %s RobotsExcluded mismatch got %v, expected %v", test.tag, got.RobotsExcluded, exp.RobotsExcluded)
 			}
-			if !got.CrawlTime.Equal(exp.CrawlTime) {
-				t.Errorf("ListLinks %s CrawlTime mismatch %v vs %v", test.tag, got.CrawlTime, exp.CrawlTime)
+			if !timeClose(got.CrawlTime, exp.CrawlTime) {
+				t.Errorf("ListLinks %s CrawlTime mismatch got %v, expected %v", test.tag, got.CrawlTime, exp.CrawlTime)
 			}
 		}
 	}
 
+	store.Close()
 }
 
 func TestInsertLinks(t *testing.T) {

@@ -77,7 +77,7 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	domain := vars["domain"]
 
-	linfos, err := DS.ListLinks(domain, "", 0)
+	linfos, err := DS.ListLinks(domain, DontSeedIndex, 0)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
 		renderer.HTML(w, http.StatusInternalServerError, "domain/info", nil)
