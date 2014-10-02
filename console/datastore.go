@@ -182,10 +182,11 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 
 	//NOTE: ClaimNewHost in walker.datastore.go uses priority 0, so I will as well.
 	priority := 0
-	for _, d := range dinfos {
+	for i := range dinfos {
+		d := &dinfos[i]
 		var uuid gocql.UUID
 		var t time.Time
-		itr = db.Query("SELECT crawler_token, claim_time FROM domains_to_crawl WHERE priority = ? AND domain = ?", priority, d).Iter()
+		itr = db.Query("SELECT crawler_token, claim_time FROM domains_to_crawl WHERE priority = ? AND domain = ?", priority, d.Domain).Iter()
 		got := itr.Scan(&uuid, &t)
 		err := itr.Close()
 		if err != nil {
@@ -200,7 +201,8 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 	//
 	// Count Links
 	//
-	for _, d := range dinfos {
+	for i := range dinfos {
+		d := &dinfos[i]
 		var linkCount, segmentCount int
 		itr = db.Query("SELECT count(*) FROM links WHERE domain = ?", d.Domain).Iter()
 		itr.Scan(&linkCount)
@@ -253,7 +255,6 @@ func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error
 	if err != nil {
 		return dinfos, err
 	}
-
 	err = ds.annotateDomainInfo(dinfos)
 
 	return dinfos, err
