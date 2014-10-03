@@ -120,6 +120,13 @@ var bazLinkHistoryInit = []console.LinkInfo{
 	},
 }
 
+type findTest struct {
+	omittest bool
+	tag      string
+	domain   string
+	expected *console.DomainInfo
+}
+
 type domainTest struct {
 	omittest bool
 	tag      string
@@ -433,6 +440,71 @@ func TestListDomains(t *testing.T) {
 			}
 		}
 	}
+	store.Close()
+}
+
+func TestFindDomain(t *testing.T) {
+	store := getDs(t)
+	populate(t, store)
+	tests := []findTest{
+		findTest{
+			tag:      "Basic",
+			domain:   "test.com",
+			expected: &testDomain,
+		},
+
+		findTest{
+			tag:      "Basic 2",
+			domain:   "foo.com",
+			expected: &fooDomain,
+		},
+
+		findTest{
+			tag:      "Nil return",
+			domain:   "notgoingtobethere.com",
+			expected: nil,
+		},
+	}
+	for _, test := range tests {
+		dinfoPtr, err := store.FindDomain(test.domain)
+		if err != nil {
+			t.Errorf("FindDomain for tag %s direct error %v", test.tag, err)
+			continue
+		}
+		expPtr := test.expected
+
+		if dinfoPtr == nil && expPtr != nil {
+			t.Errorf("FindDomain %s got nil return, expected non-nil return", test.tag)
+			continue
+		} else if dinfoPtr != nil && expPtr == nil {
+			t.Errorf("FindDomain %s got non-nil return, expected nil return", test.tag)
+		} else if dinfoPtr == nil && expPtr == nil {
+			// everything is cool
+			continue
+		}
+
+		got := *dinfoPtr
+		exp := *expPtr
+		if got.Domain != exp.Domain {
+			t.Errorf("FindDomain %s Domain mismatch got %v, expected %v", test.tag, got.Domain, exp.Domain)
+		}
+		if got.NumberLinksTotal != exp.NumberLinksTotal {
+			t.Errorf("FindDomain %s NumberLinksTotal mismatch got %v, expected %v", test.tag, got.NumberLinksTotal, exp.NumberLinksTotal)
+		}
+		if got.NumberLinksQueued != exp.NumberLinksQueued {
+			t.Errorf("FindDomain %s NumberLinksQueued mismatch got %v, expected %v", test.tag, got.NumberLinksQueued, exp.NumberLinksQueued)
+		}
+		if !timeClose(got.TimeQueued, exp.TimeQueued) {
+			t.Errorf("FindDomain %s TimeQueued mismatch got %v, expected %v", test.tag, got.TimeQueued, exp.TimeQueued)
+		}
+		if got.UuidOfQueued != exp.UuidOfQueued {
+			t.Errorf("FindDomain %s UuidOfQueued mismatch got %v, expected %v", test.tag, got.UuidOfQueued, exp.UuidOfQueued)
+		}
+		if got.ExcludeReason != exp.ExcludeReason {
+			t.Errorf("FindDomain %s ExcludeReason mismatch got %v, expected %v", test.tag, got.ExcludeReason, exp.ExcludeReason)
+		}
+	}
+
 	store.Close()
 }
 

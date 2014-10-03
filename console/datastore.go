@@ -64,6 +64,9 @@ type DataStore interface {
 	// InsertLinks queues a set of URLS to be crawled
 	InsertLinks(links []string) error
 
+	// Find a specific domain
+	FindDomain(domain string) (*DomainInfo, error)
+
 	// List domains
 	ListDomains(seedDomain string, limit int) ([]DomainInfo, error)
 
@@ -321,6 +324,33 @@ func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]Doma
 	err = ds.annotateDomainInfo(dinfos)
 
 	return dinfos, err
+}
+
+func (ds *CqlDataStore) FindDomain(domain string) (*DomainInfo, error) {
+	db := ds.Db
+	itr := db.Query("SELECT excluded, exclude_reason FROM domain_info WHERE domain = ?", domain).Iter()
+	var excluded bool
+	var excludeReason string
+	if !itr.Scan(&excluded, &excludeReason) {
+		err := itr.Close()
+		return nil, err
+	}
+
+	if excluded && excludeReason == "" {
+		excludeReason = "Excluded"
+	}
+
+	dinfo := &DomainInfo{Domain: domain, ExcludeReason: excludeReason}
+
+	err := itr.Close()
+	if err != nil {
+		return dinfo, err
+	}
+
+	dinfos := []DomainInfo{*dinfo}
+	err = ds.annotateDomainInfo(dinfos)
+	*dinfo = dinfos[0]
+	return dinfo, err
 }
 
 // Pagination note:

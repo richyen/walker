@@ -3,6 +3,7 @@ package console
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -19,7 +20,7 @@ var renderer = render.New(render.Options{
 	IsDevelopment: true,
 })
 
-func doRender(w http.ResponseWriter, template string, keyValues ...interface{}) {
+func doRenderFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
 	if len(keyValues)%2 != 0 {
 		panic(fmt.Errorf("INTERNAL ERROR: poorly used doRender: keyValues does not have even number of elements"))
 	}
@@ -33,7 +34,11 @@ func doRender(w http.ResponseWriter, template string, keyValues ...interface{}) 
 		value := keyValues[i+1]
 		mp[key] = value
 	}
-	renderer.HTML(w, http.StatusOK, template, mp)
+	renderer.HTML(w, status, template, mp)
+}
+
+func doRender(w http.ResponseWriter, template string, keyValues ...interface{}) {
+	doRenderFull(w, template, http.StatusOK, keyValues...)
 }
 
 type Route struct {
@@ -45,10 +50,17 @@ func Routes() []Route {
 	return []Route{
 		Route{Path: "/", Handler: home},
 		Route{Path: "/domains", Handler: listDomainsHandler},
+		Route{Path: "/domains/", Handler: listDomainsHandler},
 		Route{Path: "/domains/{seed}", Handler: listDomainsHandler},
-		//Route{Path: "/domain/{domain}", Handler: domainLookupHandler},
 		Route{Path: "/addLink", Handler: addLinkIndexHandler},
 	}
+}
+
+func renderServerError(w http.ResponseWriter, err error) {
+	log4go.Error("Rendering 500: %v", err)
+	doRenderFull(w, "serverError", http.StatusInternalServerError,
+		"anErrorHappend", true,
+		"theError", err.Error())
 }
 
 func home(w http.ResponseWriter, req *http.Request) {
@@ -58,21 +70,33 @@ func home(w http.ResponseWriter, req *http.Request) {
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	seed := vars["seed"]
-	log4go.Error("seed is %v", seed)
-	dinfos, err := DS.ListDomains("", 5000)
+	if seed == "" {
+		seed = DontSeedDomain
+	} else {
+		var err error
+		seed, err = url.QueryUnescape(seed)
+		if err != nil {
+			seed = DontSeedDomain
+		}
+	}
+
+	dinfos, err := DS.ListDomains(seed, PageWindowLength)
 	if err != nil {
-		log4go.Error("Failed to get count of domains: %v", err)
-		renderer.HTML(w, http.StatusInternalServerError, "domain/index", nil)
+		err = fmt.Errorf("ListDomains failed: %v", err)
+		renderServerError(w, err)
 		return
 	}
 
-	// var pagingTable []string
-	// if len(dinfos) > PageWindowLength {
-	// 	u := req.URL
-	// 	linksPrefix := u.Scheme + "://" + u.Host + "/domains/"
-	// 	pageDomains := computeDomainPagination(linksPrefix, dinfos, PageWindowLength)
-	// }
-	doRender(w, "listDomains", "Domains", dinfos)
+	nextDomain := ""
+	hasNext := false
+	if len(dinfos) == PageWindowLength {
+		nextDomain = url.QueryEscape(dinfos[len(dinfos)-1].Domain)
+		hasNext = true
+	}
+	doRender(w, "domains",
+		"Domains", dinfos,
+		"HasNext", hasNext,
+		"Next", nextDomain)
 }
 
 type UrlInfo struct {
@@ -98,7 +122,9 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 	for _, l := range linfos {
 		urls = append(urls, UrlInfo{Link: l.Url, CrawledOn: l.CrawlTime})
 	}
-	doRender(w, "domain/info", "Domain", domain, "Links", urls)
+	doRender(w, "domain/info",
+		"Domain", domain,
+		"Links", urls)
 }
 
 func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
