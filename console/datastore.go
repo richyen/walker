@@ -61,7 +61,7 @@ type DataStore interface {
 	Close()
 
 	// InsertLinks queues a set of URLS to be crawled
-	InsertLinks(links []string) []error
+	InsertLinks(links []string) error
 
 	// List domains
 	ListDomains(seedDomain string, limit int) ([]DomainInfo, error)
@@ -103,7 +103,6 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 	var count int
 	err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
 	if err != nil {
-
 		return err
 	}
 
@@ -119,18 +118,16 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 
 //NOTE: InsertLinks should try to insert as much information as possible
 //return errors for things it can't handle
-func (ds *CqlDataStore) InsertLinks(links []string) []error {
+func (ds *CqlDataStore) InsertLinks(links []string) error {
 	//
 	// Collect domains
 	//
-	var errList []error
 	var domains []string
 	var urls []*walker.URL
 	for _, link := range links {
 		url, err := walker.ParseURL(link)
 		if err != nil {
-			errList = append(errList, fmt.Errorf("Link %v: %v", link, err))
-			continue
+			return fmt.Errorf("Link %v: %v", link, err)
 		}
 		domain := url.ToplevelDomainPlusOne()
 		urls = append(urls, url)
@@ -150,8 +147,7 @@ func (ds *CqlDataStore) InsertLinks(links []string) []error {
 		if !seen[d] {
 			err := ds.addDomainIfNew(d)
 			if err != nil {
-				errList = append(errList, fmt.Errorf("Link %v unable to push domain: %v", u.String(), err))
-				continue
+				return err
 			}
 		}
 		seen[d] = true
@@ -159,20 +155,11 @@ func (ds *CqlDataStore) InsertLinks(links []string) []error {
                                      VALUES (?, ?, ?, ?, ?)`, d, u.Subdomain(),
 			u.RequestURI(), u.Scheme, walker.NotYetCrawled).Exec()
 		if err != nil {
-			errList = append(errList, fmt.Errorf("Link %v unable to push to links: %v", u.String(), err))
-			continue
-		}
-
-		err = db.Query(`INSERT INTO segments (domain, subdomain, path, protocol, crawl_time)
-                                     VALUES (?, ?, ?, ?)`, d, u.Subdomain(), u.RequestURI(),
-			u.Scheme).Exec()
-		if err != nil {
-			errList = append(errList, fmt.Errorf("Link %v unable to push to segments: %v", u.String(), err))
-			continue
+			return fmt.Errorf("Link %v unable to push to links: %v", u.String(), err)
 		}
 	}
 
-	return errList
+	return nil
 }
 
 func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, error) {

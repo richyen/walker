@@ -671,6 +671,125 @@ func TestListLinkHistorical(t *testing.T) {
 	}
 }
 
+type updatedInDb struct {
+	link   string
+	domain string
+	path   string
+}
+
+type insertTest struct {
+	omittest bool
+	tag      string
+	updated  []updatedInDb
+}
+
 func TestInsertLinks(t *testing.T) {
+	store := getDs(t)
+	populate(t, store)
+
+	tests := []insertTest{
+		insertTest{
+			updated: []updatedInDb{
+				updatedInDb{
+					link:   "http://sub.niffler1.com/page1.html",
+					domain: "niffler1.com",
+				},
+			},
+		},
+
+		insertTest{
+			updated: []updatedInDb{
+				updatedInDb{
+					link:   "http://sub.niffler2.com/page1.html",
+					domain: "niffler2.com",
+				},
+
+				updatedInDb{
+					link:   "http://sub.niffler2.com/page2.html",
+					domain: "niffler2.com",
+				},
+
+				updatedInDb{
+					link:   "http://sub.niffler2.com/page3.html",
+					domain: "niffler2.com",
+				},
+			},
+		},
+
+		insertTest{
+			updated: []updatedInDb{
+				updatedInDb{
+					link:   "http://sub.niffler3.com/page1.html",
+					domain: "niffler3.com",
+				},
+
+				updatedInDb{
+					link:   "http://sub.niffler4.com/page1.html",
+					domain: "niffler4.com",
+				},
+
+				updatedInDb{
+					link:   "http://sub.niffler5.com/page1.html",
+					domain: "niffler5.com",
+				},
+			},
+		},
+	}
+
+	// run the tests
+	for _, test := range tests {
+		if test.omittest {
+			continue
+		}
+
+		expect := map[string][]string{}
+		toadd := []string{}
+		for _, u := range test.updated {
+			toadd = append(toadd, u.link)
+			expect[u.domain] = append(expect[u.domain], u.link)
+		}
+
+		err := store.InsertLinks(toadd)
+		if err != nil {
+			t.Errorf("InsertLinks for tag %s direct error %v", test.tag, err)
+			continue
+		}
+
+		allDomains := []string{}
+		for domain, exp := range expect {
+			linfos, _, err := store.ListLinks(domain, console.DontSeedIndex, LIM)
+			if err != nil {
+				t.Errorf("InsertLinks:ListLinks for tag %s direct error %v", test.tag, err)
+			}
+			gotHash := map[string]bool{}
+			for _, linfo := range linfos {
+				gotHash[linfo.Url] = true
+			}
+
+			for _, e := range exp {
+				if !gotHash[e] {
+					t.Errorf("InsertLinks:ListLinks for tag %s failed to find link %v", test.tag, e)
+				}
+			}
+
+			allDomains = append(allDomains, domain)
+		}
+
+		dinfos, err := store.ListDomains(console.DontSeedDomain, LIM)
+		if err != nil {
+			t.Errorf("InsertLinks:ListDomains for tag %s direct error %v", test.tag, err)
+		}
+
+		gotHash := map[string]bool{}
+		for _, d := range dinfos {
+			gotHash[d.Domain] = true
+		}
+
+		for _, d := range allDomains {
+			if !gotHash[d] {
+				t.Errorf("InsertLinks:ListDomains for tag %s failed to find domain %v", test.tag, d)
+			}
+		}
+	}
 
 }
