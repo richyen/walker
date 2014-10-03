@@ -172,8 +172,19 @@ func init() {
 	seedCommand := &cobra.Command{
 		Use:   "seed",
 		Short: "add a seed URL to the datastore",
+		Long: `Seed is useful for:
+	- Adding starter links to bootstrap a broad crawl
+	- Adding links when add_new_domains is false
+	- Adding any other link that needs to be crawled soon
+
+This command will insert the provided link and also add its domain to the
+crawl, regardless of the add_new_domains configuration setting.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
+
+			orig := Config.AddNewDomains
+			defer func() { Config.AddNewDomains = orig }()
+			Config.AddNewDomains = true
 
 			if seedURL == "" {
 				fatalf("Seed URL needed to execute; add on with --url/-u")
