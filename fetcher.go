@@ -7,8 +7,11 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/iParadigms/walker/mimetools"
+
 	"github.com/temoto/robotstxt.go"
 
+	"net"
 	"net/http"
 	"net/url"
 	"time"
@@ -134,6 +137,9 @@ type FetchManager struct {
 	fetchers  []*fetcher
 	fetchWait sync.WaitGroup
 	started   bool
+
+	// used to match Content-Type headers
+	acceptFormats *mimetools.Matcher
 }
 
 // Start begins processing assuming that the datastore and any handlers have
@@ -152,7 +158,22 @@ func (fm *FetchManager) Start() {
 	if fm.started {
 		panic("Cannot start a FetchManager multiple times")
 	}
+
+	mm, err := mimetools.NewMatcher(Config.AcceptFormats)
+	fm.acceptFormats = mm
+	if err != nil {
+		panic(fmt.Errorf("mimetools.NewMatcher failed to initialize: %v", err))
+	}
+
 	fm.started = true
+
+	t, ok := fm.Transport.(*http.Transport)
+	if ok {
+		t.Dial = DNSCachingDial(t.Dial, Config.MaxDNSCacheEntries)
+	} else {
+		log4go.Info("Given an non-http transport, not using dns caching")
+	}
+
 	numFetchers := Config.NumSimultaneousFetchers
 	fm.fetchers = make([]*fetcher, numFetchers)
 	for i := 0; i < numFetchers; i++ {
@@ -202,7 +223,6 @@ type fetcher struct {
 func newFetcher(fm *FetchManager) *fetcher {
 	f := new(fetcher)
 	f.fm = fm
-	// Cache this globally?
 	f.httpclient = &http.Client{
 		Transport: fm.Transport,
 	}
@@ -231,6 +251,10 @@ func (f *fetcher) start() {
 		f.host = f.fm.Datastore.ClaimNewHost()
 		if f.host == "" {
 			time.Sleep(time.Second)
+			continue
+		}
+
+		if f.checkForBlacklisting(f.host) {
 			continue
 		}
 
@@ -265,7 +289,8 @@ func (f *fetcher) start() {
 
 			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
 
-			if isHTML(fr.Response) {
+			canSearch := isHTML(fr.Response)
+			if canSearch {
 				log4go.Debug("Reading and parsing as HTML (%v)", link)
 
 				//TODO: ReadAll is inefficient. We should use a properly sized
@@ -298,7 +323,16 @@ func (f *fetcher) start() {
 				}
 			}
 
-			f.fm.Handler.HandleResponse(fr)
+			// handle any doc that we searched or that is in our AcceptFormats
+			// list
+			canHandle := isHandleable(fr.Response, f.fm.acceptFormats)
+			if canSearch || canHandle {
+				f.fm.Handler.HandleResponse(fr)
+			} else {
+				ctype := strings.Join(fr.Response.Header["Content-Type"], ",")
+				log4go.Debug("Not handling url %v -- `Content-Type: %v`", fr.URL.String(), ctype)
+			}
+
 			//TODO: Wrap the reader and check for read error here
 			f.fm.Datastore.StoreURLFetchResults(fr)
 
@@ -343,6 +377,7 @@ func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 	}
 
 	req.Header.Set("User-Agent", Config.UserAgent)
+	req.Header.Set("Accept", strings.Join(Config.AcceptFormats, ","))
 	//TODO: set headers? req.Header[] = ...
 
 	// Do the request.
@@ -351,6 +386,38 @@ func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+// checkForBlacklisting returns true if this site is blacklisted or should be
+// blacklisted. If we detect that this site should be blacklisted, this
+// function will call the datastore appropriately.
+//
+// One example of blacklisting is detection of IP addresses that resolve to
+// localhost or other bad IP ranges.
+func (f *fetcher) checkForBlacklisting(host string) bool {
+	t, ok := f.fm.Transport.(*http.Transport)
+	if !ok {
+		// We need to get the transport's Dial function in order to check the
+		// IP address
+		return false
+	}
+
+	conn, err := t.Dial("tcp", net.JoinHostPort(host, "80"))
+	if err != nil {
+		//TODO: blacklist this domain in the datastore as couldn't connect;
+		//maybe try a few times
+		log4go.Info("Could not connect to host (%v, %v), blacklisting", host, err)
+		return true
+	}
+	defer conn.Close()
+
+	if Config.BlacklistPrivateIPs && isPrivateAddr(conn.RemoteAddr().String()) {
+		//TODO: mark this domain as blacklisted  in the datastore for resolving
+		//to a private IP
+		log4go.Info("Host (%v) resolved to private IP address, blacklisting", host)
+		return true
+	}
+	return false
 }
 
 // getLinks parses the response for links, doing it's best with bad HTML.
@@ -429,6 +496,54 @@ func isHTML(r *http.Response) bool {
 	}
 	for _, ct := range r.Header["Content-Type"] {
 		if strings.HasPrefix(ct, "text/html") {
+			return true
+		}
+	}
+	return false
+}
+
+func isHandleable(r *http.Response, mm *mimetools.Matcher) bool {
+	for _, ct := range r.Header["Content-Type"] {
+		matched, err := mm.Match(ct)
+		if err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
+var privateNetworks = []*net.IPNet{
+	parseCIDR("10.0.0.0/8"),
+	parseCIDR("192.168.0.0/16"),
+	parseCIDR("172.16.0.0/12"),
+	parseCIDR("127.0.0.0/8"),
+}
+
+// parseCIDR is a convenience for creating our static private IPNet ranges
+func parseCIDR(netstring string) *net.IPNet {
+	_, network, err := net.ParseCIDR(netstring)
+	if err != nil {
+		panic(err.Error())
+	}
+	return network
+}
+
+// isPrivateAddr determines whether the input address belongs to any of the
+// private networks specified in privateNetworkStrings. It returns an error
+// if the input string does not represent an IP address.
+func isPrivateAddr(addr string) bool {
+	// Remove the port number if there is one
+	if index := strings.LastIndex(addr, ":"); index != -1 {
+		addr = addr[:index]
+	}
+
+	thisIP := net.ParseIP(addr)
+	if thisIP == nil {
+		log4go.Error("Failed to parse as IP address: %v", addr)
+		return false
+	}
+	for _, network := range privateNetworks {
+		if network.Contains(thisIP) {
 			return true
 		}
 	}
