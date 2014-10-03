@@ -4,6 +4,7 @@ package test
 
 import (
 	"io/ioutil"
+	"net/http"
 	"testing"
 	"time"
 
@@ -176,4 +177,51 @@ func TestFetcherBlacklistsPrivateIPs(t *testing.T) {
 	ds.AssertExpectations(t)
 	h.AssertExpectations(t)
 	ds.AssertNotCalled(t, "LinksForHost", "private.com")
+}
+
+func TestFetcherCreatesTransport(t *testing.T) {
+	orig := walker.Config.BlacklistPrivateIPs
+	defer func() { walker.Config.BlacklistPrivateIPs = orig }()
+	walker.Config.BlacklistPrivateIPs = false
+
+	ds := &MockDatastore{}
+	ds.On("ClaimNewHost").Return("localhost.localdomain").Once()
+	ds.On("LinksForHost", "localhost.localdomain").Return([]*walker.URL{
+		parse("http://localhost.localdomain/"),
+	})
+	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
+	ds.On("UnclaimHost", "localhost.localdomain").Return()
+	ds.On("ClaimNewHost").Return("")
+
+	h := &MockHandler{}
+	h.On("HandleResponse", mock.Anything).Return()
+
+	rs, err := NewMockRemoteServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+	}
+
+	go manager.Start()
+	time.Sleep(time.Second * 1)
+	manager.Stop()
+	rs.Stop()
+
+	if manager.Transport == nil {
+		t.Fatalf("Expected Transport to get set")
+	}
+	_, ok := manager.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("Expected Transport to get set to a *http.Transport")
+	}
+
+	// It would be great to check that the DNS cache actually got used here,
+	// but with the current design there seems to be no way to check it
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
 }
