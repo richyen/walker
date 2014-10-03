@@ -52,6 +52,8 @@ func Routes() []Route {
 		Route{Path: "/domains", Handler: listDomainsHandler},
 		Route{Path: "/domains/", Handler: listDomainsHandler},
 		Route{Path: "/domains/{seed}", Handler: listDomainsHandler},
+		Route{Path: "/find", Handler: findDomainHandler},
+		Route{Path: "/find/", Handler: findDomainHandler},
 		Route{Path: "/addLink", Handler: addLinkIndexHandler},
 	}
 }
@@ -97,6 +99,68 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 		"Domains", dinfos,
 		"HasNext", hasNext,
 		"Next", nextDomain)
+}
+
+func findDomainHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		doRender(w, "find")
+		return
+	}
+
+	err := req.ParseForm()
+	if err != nil {
+		renderServerError(w, err)
+
+	}
+	targetAll, ok := req.Form["targets"]
+	if !ok {
+		doRender(w, "find")
+		return
+	}
+
+	lines := strings.Split(targetAll[0], "\n")
+	targets := []string{}
+	for i := range lines {
+		t := strings.TrimSpace(lines[i])
+		if t != "" {
+			targets = append(targets, t)
+		}
+	}
+	target := targets[0]
+
+	if target == "" {
+		doRender(w, "find")
+		return
+	}
+
+	t, err := url.QueryUnescape(target)
+	if err != nil {
+		doRender(w, "find",
+			"TargetMessage", fmt.Sprintf("Failed to decode domain %s", target),
+			"HasTargetMessage", true)
+		return
+	}
+	target = t
+
+	dinfo, err := DS.FindDomain(target)
+	if err != nil {
+		err = fmt.Errorf("FindDomain failed: %v", err)
+		renderServerError(w, err)
+		return
+	}
+
+	if dinfo == nil {
+		doRender(w, "find",
+			"TargetMessage", fmt.Sprintf("Failed to find domain %s", target),
+			"HasTargetMessage", true)
+		return
+	}
+
+	dinfos := []DomainInfo{*dinfo}
+
+	doRender(w, "domains",
+		"Domains", dinfos,
+		"HasNext", false)
 }
 
 type UrlInfo struct {
