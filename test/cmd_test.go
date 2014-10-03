@@ -10,6 +10,59 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+var WalkerCommands = []string{"crawl", "fetch", "dispatch", "seed"}
+
+func TestCommandsReadConfig(t *testing.T) {
+	orig := os.Args
+	defer func() {
+		os.Args = orig
+		// Reset config for the remaining tests
+		loadTestConfig("test-walker.yaml")
+	}()
+
+	handler := &MockHandler{}
+	walker.Cmd.Handler = handler
+
+	datastore := &MockDatastore{}
+	datastore.On("ClaimNewHost").Return("")
+	datastore.On("ClaimNewHost").Return("")
+	datastore.On("StoreParsedURL", mock.Anything, mock.Anything).Return()
+	walker.Cmd.Datastore = datastore
+
+	dispatcher := &MockDispatcher{}
+	dispatcher.On("StartDispatcher").Return(nil)
+	dispatcher.On("StopDispatcher").Return(nil)
+	walker.Cmd.Dispatcher = dispatcher
+
+	for _, cmd := range WalkerCommands {
+		loadTestConfig("test-walker.yaml")
+		expectedDefaultAgent := "Walker (http://github.com/iParadigms/walker)"
+		if walker.Config.UserAgent != expectedDefaultAgent {
+			t.Fatalf("Failed to reset default config value (user_agent), expected: %v\nBut got: %v",
+				expectedDefaultAgent, walker.Config.UserAgent)
+		}
+
+		switch cmd {
+		case "seed":
+			os.Args = []string{os.Args[0], cmd, "--url=http://test.com", "--config=test-walker2.yaml"}
+		default:
+			os.Args = []string{os.Args[0], cmd, "--config=test-walker2.yaml"}
+		}
+
+		go func() {
+			time.Sleep(5 * time.Millisecond)
+			syscall.Kill(os.Getpid(), syscall.SIGINT)
+		}()
+		walker.Cmd.Execute()
+
+		expectedTestAgent := "Test Agent (set in yaml)"
+		if walker.Config.UserAgent != expectedTestAgent {
+			t.Errorf("Failed to set config value (user_agent) via yaml, expected: %v\nBut got: %v",
+				expectedTestAgent, walker.Config.UserAgent)
+		}
+	}
+}
+
 func TestCrawlCommand(t *testing.T) {
 	handler := &MockHandler{}
 	walker.Cmd.Handler = handler

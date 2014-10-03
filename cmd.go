@@ -51,13 +51,23 @@ func init() {
 		Use: "walker",
 	}
 
-	//var config string
-	//walkerCommand.Flags().StringVar(&config, "config", "", "path to a config file to load")
+	var config string
+	walkerCommand.PersistentFlags().StringVarP(&config,
+		"config", "c", "", "path to a config file to load")
+	readConfig := func() {
+		if config != "" {
+			if err := ReadConfigFile(config); err != nil {
+				panic(err.Error())
+			}
+		}
+	}
 
 	crawlCommand := &cobra.Command{
 		Use:   "crawl",
 		Short: "start an all-in-one crawler",
 		Run: func(cmd *cobra.Command, args []string) {
+			readConfig()
+
 			if Cmd.Datastore == nil {
 				ds, err := NewCassandraDatastore()
 				if err != nil {
@@ -102,6 +112,8 @@ func init() {
 		Use:   "fetch",
 		Short: "start only a walker fetch manager",
 		Run: func(cmd *cobra.Command, args []string) {
+			readConfig()
+
 			if Cmd.Datastore == nil {
 				ds, err := NewCassandraDatastore()
 				if err != nil {
@@ -134,6 +146,8 @@ func init() {
 		Use:   "dispatch",
 		Short: "start only a walker dispatcher",
 		Run: func(cmd *cobra.Command, args []string) {
+			readConfig()
+
 			if Cmd.Dispatcher == nil {
 				Cmd.Dispatcher = &CassandraDispatcher{}
 			}
@@ -159,6 +173,8 @@ func init() {
 		Use:   "seed",
 		Short: "add a seed URL to the datastore",
 		Run: func(cmd *cobra.Command, args []string) {
+			readConfig()
+
 			if seedURL == "" {
 				fatalf("Seed URL needed to execute; add on with --url/-u")
 			}

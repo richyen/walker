@@ -167,6 +167,19 @@ func (fm *FetchManager) Start() {
 
 	fm.started = true
 
+	if fm.Transport == nil {
+		// Set fm.Transport == http.DefaultTransport, but create a new one; we
+		// want to override Dial but don't want to globally override it in
+		// http.DefaultTransport.
+		fm.Transport = &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			Dial: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout: 10 * time.Second,
+		}
+	}
 	t, ok := fm.Transport.(*http.Transport)
 	if ok {
 		t.Dial = DNSCachingDial(t.Dial, Config.MaxDNSCacheEntries)

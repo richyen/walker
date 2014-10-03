@@ -26,6 +26,11 @@ func loadTestConfig(filename string) {
 }
 
 func TestConfigLoading(t *testing.T) {
+	defer func() {
+		// Reset config for the remaining tests
+		loadTestConfig("test-walker.yaml")
+	}()
+
 	walker.Config.UserAgent = "Test Agent (set inline)"
 	walker.SetDefaultConfig()
 	expectedAgentInline := "Walker (http://github.com/iParadigms/walker)"
@@ -33,13 +38,49 @@ func TestConfigLoading(t *testing.T) {
 		t.Errorf("Failed to reset default config value (user_agent), expected: %v\nBut got: %v",
 			expectedAgentInline, walker.Config.UserAgent)
 	}
-	walker.ReadConfigFile("test-walker2.yaml")
+	err := walker.ReadConfigFile("test-walker2.yaml")
+	if err != nil {
+		t.Fatalf(err.Error())
+	}
 	expectedAgentYaml := "Test Agent (set in yaml)"
 	if walker.Config.UserAgent != expectedAgentYaml {
 		t.Errorf("Failed to set config value (user_agent) via yaml, expected: %v\nBut got: %v",
 			expectedAgentYaml, walker.Config.UserAgent)
 	}
+}
 
-	// Need this to reset config needed for the rest of the tests
-	loadTestConfig("test-walker.yaml")
+type ConfigTestCase struct {
+	file     string
+	expected string
+}
+
+var ConfigTestCases = []ConfigTestCase{
+	ConfigTestCase{
+		"does-not-exist.yaml",
+		"Failed to read config file (does-not-exist.yaml): open does-not-exist.yaml: no such file or directory",
+	},
+	ConfigTestCase{
+		"invalid-syntax.yaml",
+		"Failed to unmarshal yaml from config file (invalid-syntax.yaml): yaml: line 3: mapping values are not allowed in this context",
+	},
+	ConfigTestCase{
+		"invalid-field-type.yaml",
+		"Failed to unmarshal yaml from config file (invalid-field-type.yaml): yaml: unmarshal errors:\n  line 3: cannot unmarshal !!str `what?` into int",
+	},
+}
+
+func TestConfigLoadingBadFiles(t *testing.T) {
+	defer func() {
+		// Reset config for the remaining tests
+		loadTestConfig("test-walker.yaml")
+	}()
+
+	for _, c := range ConfigTestCases {
+		err := walker.ReadConfigFile(c.file)
+		if err == nil {
+			t.Errorf("Expected an error trying to read %v but did not get one", c.file)
+		} else if err.Error() != c.expected {
+			t.Errorf("Reading config %v, expected: %v\nBut got: %v", c.file, c.expected, err)
+		}
+	}
 }
