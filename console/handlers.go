@@ -44,8 +44,9 @@ type Route struct {
 func Routes() []Route {
 	return []Route{
 		Route{Path: "/", Handler: home},
-		Route{Path: "/listDomains", Handler: listDomainsHandler},
-		Route{Path: "/domain/{domain}", Handler: domainLookupHandler},
+		Route{Path: "/domains", Handler: listDomainsHandler},
+		Route{Path: "/domains/{seed}", Handler: listDomainsHandler},
+		//Route{Path: "/domain/{domain}", Handler: domainLookupHandler},
 		Route{Path: "/addLink", Handler: addLinkIndexHandler},
 	}
 }
@@ -55,14 +56,24 @@ func home(w http.ResponseWriter, req *http.Request) {
 }
 
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
-	domains, err := DS.ListDomains("", 5000)
+	vars := mux.Vars(req)
+	seed := vars["seed"]
+
+	dinfos, err := DS.ListDomains("", 5000)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
 		renderer.HTML(w, http.StatusInternalServerError, "domain/index", nil)
 		return
 	}
+
+	var pagingTable []string
+	if len(dinfos) > PageWindowLength {
+		u := req.URL
+		linkPrefix := u.Scheme + "://" + u.Host + "/domains/"
+		pageDomains := computeDomainPagination(linksPrefix, dinfos, PageWindowLength)
+	}
 	log4go.Info("Got %v", domains)
-	doRender(w, "listDomains", "Domains", domains)
+	doRender(w, "listDomains", "Domains", domains, "PagingTable", pagintTable)
 }
 
 type UrlInfo struct {
@@ -77,7 +88,7 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	domain := vars["domain"]
 
-	linfos, err := DS.ListLinks(domain, DontSeedIndex, 0)
+	linfos, _, err := DS.ListLinks(domain, DontSeedIndex, 0)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
 		renderer.HTML(w, http.StatusInternalServerError, "domain/info", nil)

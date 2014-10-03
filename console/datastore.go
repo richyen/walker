@@ -70,7 +70,7 @@ type DataStore interface {
 	ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error)
 
 	// List links from the given domain
-	ListLinks(domain string, seedIndex int, limit int) ([]LinkInfo, error)
+	ListLinks(domain string, seedIndex int, limit int) ([]LinkInfo, int, error)
 
 	// For a given linkUrl, return the entire crawl history
 	ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error)
