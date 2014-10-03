@@ -134,6 +134,7 @@ type linkTest struct {
 	domain   string
 	histUrl  string
 	seed     int
+	seedUrl  string
 	limit    int
 	expected []console.LinkInfo
 }
@@ -512,16 +513,16 @@ func TestListLinks(t *testing.T) {
 		linkTest{
 			tag:      "Basic Pull",
 			domain:   "test.com",
-			seed:     console.DontSeedIndex,
+			seedUrl:  console.DontSeedUrl,
 			limit:    LIM,
 			expected: testComLinkOrder,
 		},
 
 		linkTest{
-			tag:    "foo pull",
-			domain: "foo.com",
-			seed:   console.DontSeedIndex,
-			limit:  LIM,
+			tag:     "foo pull",
+			domain:  "foo.com",
+			seedUrl: console.DontSeedUrl,
+			limit:   LIM,
 			expected: []console.LinkInfo{
 				console.LinkInfo{
 					Url:            "http://sub.foo.com/page1.html",
@@ -544,6 +545,7 @@ func TestListLinks(t *testing.T) {
 		linkTest{
 			tag:      "bar pull",
 			domain:   "bar.com",
+			seedUrl:  console.DontSeedUrl,
 			seed:     console.DontSeedIndex,
 			limit:    LIM,
 			expected: []console.LinkInfo{},
@@ -552,7 +554,7 @@ func TestListLinks(t *testing.T) {
 		linkTest{
 			tag:      "seeded pull",
 			domain:   "test.com",
-			seed:     len(testComLinkOrder) / 2,
+			seedUrl:  testComLinkOrder[len(testComLinkOrder)/2-1].Url,
 			limit:    LIM,
 			expected: testComLinkOrder[len(testComLinkOrder)/2:],
 		},
@@ -560,7 +562,7 @@ func TestListLinks(t *testing.T) {
 		linkTest{
 			tag:      "seeded pull with limit",
 			domain:   "test.com",
-			seed:     len(testComLinkOrder) / 2,
+			seedUrl:  testComLinkOrder[len(testComLinkOrder)/2-1].Url,
 			limit:    1,
 			expected: testComLinkOrder[len(testComLinkOrder)/2 : len(testComLinkOrder)/2+1],
 		},
@@ -571,13 +573,9 @@ func TestListLinks(t *testing.T) {
 		if test.omittest {
 			continue
 		}
-		linfos, nextSeed, err := store.ListLinks(test.domain, test.seed, test.limit)
+		linfos, err := store.ListLinks(test.domain, test.seedUrl, test.limit)
 		if err != nil {
 			t.Errorf("ListLinks for tag %s direct error %v", test.tag, err)
-			continue
-		}
-		if nextSeed != test.seed+len(linfos) {
-			t.Errorf("ListLinks for tag %s bad nextSeed got %d, expected %d", test.tag, nextSeed, test.seed+len(linfos))
 			continue
 		}
 		if len(linfos) != len(test.expected) {
@@ -758,7 +756,7 @@ func TestInsertLinks(t *testing.T) {
 
 		allDomains := []string{}
 		for domain, exp := range expect {
-			linfos, _, err := store.ListLinks(domain, console.DontSeedIndex, LIM)
+			linfos, err := store.ListLinks(domain, console.DontSeedUrl, LIM)
 			if err != nil {
 				t.Errorf("InsertLinks:ListLinks for tag %s direct error %v", test.tag, err)
 			}

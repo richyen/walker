@@ -50,6 +50,7 @@ type LinkInfo struct {
 //DataStore represents all the interaction the application has with the datastore.
 //
 const DontSeedDomain = ""
+const DontSeedUrl = ""
 const DontSeedIndex = 0
 
 type DataStore interface {
@@ -70,7 +71,7 @@ type DataStore interface {
 	ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error)
 
 	// List links from the given domain
-	ListLinks(domain string, seedIndex int, limit int) ([]LinkInfo, int, error)
+	ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error)
 
 	// For a given linkUrl, return the entire crawl history
 	ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error)
@@ -322,42 +323,51 @@ func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]Doma
 	return dinfos, err
 }
 
+// Pagination note:
+// To paginate a single column you can do
+//
+//   SELECT a FROM table WHERE a > startingA
+//
+// If you have two columns though, it requires two queries
+//
+//   SELECT a,b from table WHERE a == startingA AND b > startingB
+//   SELECT a,b from table WHERE a > startingA
+//
+// With 3 columns it looks like this
+//
+//   SELECT a,b,c FROM table WHERE a == startingA AND b == startingB AND c > startingC
+//   SELECT a,b,c FROM table WHERE a == startingA AND b > startingB
+//   SELECT a,b,c FROM table WHERE a > startingA
+//
+// Particularly for our links table, with primary key domain, subdomain, path, protocol, crawl_time
+// For right now, ignore the crawl time we write
+//
+// SELECT * FROM links WHERE domain = startDomain AND subdomain = startSubDomain AND path = startPath
+//                           AND protocol > startProtocol
+// SELECT * FROM links WHERE domain = startDomain AND subdomain = startSubDomain AND path > startPath
+// SELECT * FROM links WHERE domain = startDomain AND subdomain > startSubDomain
+//
+// Now the only piece left, is that crawl_time is part of the primary key. Generally we're only going to take the latest crawl time. But see
+// Historical query
+//
+
 type rememberTimes struct {
 	ctm time.Time
 	ind int
 }
 
-//NOTE: have to implement paging in software. domain is the partition key, and can only use TOKEN on partition key
-func (ds *CqlDataStore) ListLinks(domain string, seedIndex int, limit int) ([]LinkInfo, int, error) {
-	if limit <= 0 {
-		return nil, seedIndex, fmt.Errorf("Bad value for limit parameter %d", limit)
-	}
-	db := ds.Db
-
-	q := `SELECT subdomain, path, protocol, crawl_time, status, error, robots_excluded 
-                          FROM links 
-                          WHERE domain = ?`
-
-	var subdomain, path, protocol, anerror string
+//collectListInfos populates a []LinkInfo list given a cassandra iterator
+func (ds *CqlDataStore) collectListInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) {
+	var domain, subdomain, path, protocol, anerror string
 	var crawlTime time.Time
 	var robotsExcluded bool
 	var status int
-	linfos := []LinkInfo{}
-	rtimes := map[string]rememberTimes{}
-	count := 0
-	itr := db.Query(q, domain).Iter()
-	for itr.Scan(&subdomain, &path, &protocol, &crawlTime, &status, &anerror, &robotsExcluded) {
-		// SKip first seedIndex elements
-		if count < seedIndex {
-			count++
-			continue
-		}
 
-		//ok we got an unseeded value
+	for itr.Scan(&domain, &subdomain, &path, &protocol, &crawlTime, &status, &anerror, &robotsExcluded) {
+
 		u, err := walker.CreateURL(domain, subdomain, path, protocol, crawlTime)
 		if err != nil {
-			itr.Close()
-			return linfos, seedIndex + len(linfos), err
+			return linfos, err
 		}
 		urlString := u.String()
 
@@ -377,8 +387,8 @@ func (ds *CqlDataStore) ListLinks(domain string, seedIndex int, limit int) ([]Li
 
 		nindex := -1
 		if yes {
-			linfos[qq.ind] = linfo
 			nindex = qq.ind
+			linfos[qq.ind] = linfo
 		} else {
 			linfos = append(linfos, linfo)
 			nindex = len(linfos) - 1
@@ -389,9 +399,87 @@ func (ds *CqlDataStore) ListLinks(domain string, seedIndex int, limit int) ([]Li
 			break
 		}
 	}
-	err := itr.Close()
-	return linfos, seedIndex + len(linfos), err
+	return linfos, nil
+}
 
+type queryEntry struct {
+	query string
+	args  []interface{}
+}
+
+func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
+	}
+	db := ds.Db
+	var linfos []LinkInfo
+	rtimes := map[string]rememberTimes{}
+	var table []queryEntry
+
+	if seedUrl == "" {
+		table = []queryEntry{
+			queryEntry{
+				query: `SELECT domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                      FROM links 
+                      WHERE domain = ?`,
+				args: []interface{}{domain},
+			},
+		}
+	} else {
+		u, err := walker.ParseURL(seedUrl)
+		if err != nil {
+			return linfos, err
+		}
+		dom := u.ToplevelDomainPlusOne()
+		sub := u.Subdomain()
+		pat := u.RequestURI()
+		pro := u.Scheme
+
+		table = []queryEntry{
+			queryEntry{
+				query: `SELECT domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                      FROM links 
+                      WHERE domain = ? AND 
+                            subdomain = ? AND 
+                            path = ? AND 
+                            protocol > ?`,
+				args: []interface{}{dom, sub, pat, pro},
+			},
+			queryEntry{
+				query: `SELECT domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                      FROM links 
+                      WHERE domain = ? AND 
+                            subdomain = ? AND 
+                            path > ?`,
+				args: []interface{}{dom, sub, pat},
+			},
+			queryEntry{
+				query: `SELECT domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                      FROM links 
+                      WHERE domain = ? AND 
+                            subdomain > ?`,
+				args: []interface{}{dom, sub},
+			},
+		}
+	}
+
+	var err error
+	for _, qt := range table {
+		itr := db.Query(qt.query, qt.args...).Iter()
+		linfos, err = ds.collectListInfos(linfos, rtimes, itr, limit)
+		if err != nil {
+			return linfos, err
+		}
+
+		err = itr.Close()
+		if err != nil {
+			return linfos, err
+		} else if len(linfos) >= limit {
+			return linfos, nil
+		}
+	}
+
+	return linfos, nil
 }
 
 func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error) {

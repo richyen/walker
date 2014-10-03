@@ -1,9 +1,6 @@
 package console
 
-import (
-	"fmt"
-	"net/url"
-)
+import ()
 
 const PageWindowLength = 25
 

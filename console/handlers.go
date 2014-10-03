@@ -58,7 +58,7 @@ func home(w http.ResponseWriter, req *http.Request) {
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	seed := vars["seed"]
-
+	log4go.Error("seed is %v", seed)
 	dinfos, err := DS.ListDomains("", 5000)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
@@ -66,14 +66,13 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	var pagingTable []string
-	if len(dinfos) > PageWindowLength {
-		u := req.URL
-		linkPrefix := u.Scheme + "://" + u.Host + "/domains/"
-		pageDomains := computeDomainPagination(linksPrefix, dinfos, PageWindowLength)
-	}
-	log4go.Info("Got %v", domains)
-	doRender(w, "listDomains", "Domains", domains, "PagingTable", pagintTable)
+	// var pagingTable []string
+	// if len(dinfos) > PageWindowLength {
+	// 	u := req.URL
+	// 	linksPrefix := u.Scheme + "://" + u.Host + "/domains/"
+	// 	pageDomains := computeDomainPagination(linksPrefix, dinfos, PageWindowLength)
+	// }
+	doRender(w, "listDomains", "Domains", dinfos)
 }
 
 type UrlInfo struct {
@@ -88,7 +87,7 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	domain := vars["domain"]
 
-	linfos, _, err := DS.ListLinks(domain, DontSeedIndex, 0)
+	linfos, err := DS.ListLinks(domain, DontSeedUrl, 0)
 	if err != nil {
 		log4go.Error("Failed to get count of domains: %v", err)
 		renderer.HTML(w, http.StatusInternalServerError, "domain/info", nil)
