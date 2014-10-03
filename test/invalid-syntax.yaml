@@ -1,0 +1,4 @@
+# This test file has invalid yaml syntax. Insane.
+
+default_crawl_delay: 4
+    what:

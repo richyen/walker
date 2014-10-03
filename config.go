@@ -1,12 +1,13 @@
 package walker
 
 import (
+	"fmt"
 	"io/ioutil"
 	"strings"
 
-	"code.google.com/p/log4go"
+	"gopkg.in/yaml.v2"
 
-	"gopkg.in/yaml.v1"
+	"code.google.com/p/log4go"
 )
 
 // Config is the configuration instance the rest of walker should access for
@@ -18,7 +19,14 @@ var Config WalkerConfig
 var ConfigName string = "walker.yaml"
 
 func init() {
-	readConfig()
+	err := readConfig()
+	if err != nil {
+		if strings.Contains(err.Error(), "no such file or directory") {
+			log4go.Info("Did not find config file %v, continuing with defaults", ConfigName)
+		} else {
+			panic(err.Error())
+		}
+	}
 }
 
 // WalkerConfig defines the available global configuration parameters for
@@ -95,27 +103,22 @@ func SetDefaultConfig() {
 
 // ReadConfigFile sets a new path to find the walker yaml config file and
 // forces a reload of the config.
-func ReadConfigFile(path string) {
+func ReadConfigFile(path string) error {
 	ConfigName = path
-	readConfig()
+	return readConfig()
 }
 
-func readConfig() {
+func readConfig() error {
 	SetDefaultConfig()
 
 	data, err := ioutil.ReadFile(ConfigName)
 	if err != nil {
-		if strings.Contains(err.Error(), "no such file or directory") {
-			log4go.Info("Did not find config file %v, continuing with defaults", ConfigName)
-		} else {
-			log4go.Error("Failed to read config file (%v): %v", ConfigName, err)
-		}
-		return
+		return fmt.Errorf("Failed to read config file (%v): %v", ConfigName, err)
 	}
 	err = yaml.Unmarshal(data, &Config)
 	if err != nil {
-		log4go.Error("Failed to unmarshal yaml from config file (%v): %v", ConfigName, err)
-		return
+		return fmt.Errorf("Failed to unmarshal yaml from config file (%v): %v", ConfigName, err)
 	}
 	log4go.Info("Loaded config file %v", ConfigName)
+	return nil
 }
