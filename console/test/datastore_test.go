@@ -12,33 +12,9 @@ import (
 	"github.com/iParadigms/walker/console"
 )
 
-var initdb sync.Once
-
-func getDs(t *testing.T) *console.CqlDataStore {
-	//XXX: More elegant way to do this? Right now I want to make sure
-	// it's set
-	walker.Config.Cassandra.Keyspace = "walker_test"
-	walker.Config.Cassandra.Hosts = []string{"localhost"}
-	walker.Config.Cassandra.ReplicationFactor = 1
-
-	initdb.Do(func() {
-		err := walker.CreateCassandraSchema()
-		if err != nil {
-			t.Fatalf(err.Error())
-		}
-	})
-
-	ds, err := console.NewCqlDataStore()
-	if err != nil {
-		panic(err)
-	}
-
-	//
-	ds.Db.SetConsistency(gocql.One)
-
-	return ds
-}
-
+//
+// Some global data
+//
 var fooTime = time.Now().AddDate(0, 0, -1)
 var testTime = time.Now().AddDate(0, 0, -2)
 var bazUuid, _ = gocql.RandomUUID()
@@ -142,6 +118,108 @@ var bazLinkHistoryInit = []console.LinkInfo{
 		Status:    200,
 		CrawlTime: time.Now().AddDate(0, 0, -5),
 	},
+}
+
+type domainTest struct {
+	omittest bool
+	tag      string
+	seed     string
+	limit    int
+	expected []console.DomainInfo
+}
+
+type linkTest struct {
+	omittest bool
+	tag      string
+	domain   string
+	histUrl  string
+	seed     int
+	limit    int
+	expected []console.LinkInfo
+}
+
+const LIM = 50
+
+const EPSILON_SECONDS = 1
+
+func timeClose(l time.Time, r time.Time) bool {
+	delta := l.Unix() - r.Unix()
+	if delta < 0 {
+		delta = -delta
+	}
+	return delta <= EPSILON_SECONDS
+}
+
+//Shared Domain Information
+var bazDomain = console.DomainInfo{
+	Domain:            "baz.com",
+	NumberLinksTotal:  1,
+	NumberLinksQueued: 1,
+	TimeQueued:        testTime,
+	UuidOfQueued:      bazUuid.String(),
+}
+
+var fooDomain = console.DomainInfo{
+	Domain:            "foo.com",
+	NumberLinksTotal:  2,
+	NumberLinksQueued: 0,
+}
+
+var barDomain = console.DomainInfo{
+	Domain:            "bar.com",
+	NumberLinksTotal:  0,
+	NumberLinksQueued: 0,
+	ExcludeReason:     "Didn't like it",
+}
+
+var testDomain = console.DomainInfo{
+	Domain:            "test.com",
+	NumberLinksTotal:  8,
+	NumberLinksQueued: 2,
+	TimeQueued:        testTime,
+	UuidOfQueued:      gocql.UUID{}.String(),
+}
+
+type updatedInDb struct {
+	link   string
+	domain string
+	path   string
+}
+
+type insertTest struct {
+	omittest bool
+	tag      string
+	updated  []updatedInDb
+}
+
+//
+// Fixture generation
+//
+var initdb sync.Once
+
+func getDs(t *testing.T) *console.CqlDataStore {
+	//XXX: More elegant way to do this? Right now I want to make sure
+	// it's set
+	walker.Config.Cassandra.Keyspace = "walker_test"
+	walker.Config.Cassandra.Hosts = []string{"localhost"}
+	walker.Config.Cassandra.ReplicationFactor = 1
+
+	initdb.Do(func() {
+		err := walker.CreateCassandraSchema()
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
+	})
+
+	ds, err := console.NewCqlDataStore()
+	if err != nil {
+		panic(err)
+	}
+
+	//
+	ds.Db.SetConsistency(gocql.One)
+
+	return ds
 }
 
 func populate(t *testing.T, ds *console.CqlDataStore) {
@@ -257,74 +335,9 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	}
 }
 
-type domainTest struct {
-	omittest bool
-	tag      string
-	seed     string
-	limit    int
-	expected []console.DomainInfo
-}
-
-type linkTest struct {
-	omittest bool
-	tag      string
-	domain   string
-	histUrl  string
-	seed     int
-	limit    int
-	expected []console.LinkInfo
-}
-
-const LIM = 50
-
-func dlist2dhash(target []console.DomainInfo) map[string]console.DomainInfo {
-	h := map[string]console.DomainInfo{}
-	for _, d := range target {
-		h[d.Domain] = d
-	}
-	return h
-}
-
-const EPSILON_SECONDS = 1
-
-func timeClose(l time.Time, r time.Time) bool {
-	delta := l.Unix() - r.Unix()
-	if delta < 0 {
-		delta = -delta
-	}
-	return delta <= EPSILON_SECONDS
-}
-
-//Shared Domain Information
-var bazDomain = console.DomainInfo{
-	Domain:            "baz.com",
-	NumberLinksTotal:  1,
-	NumberLinksQueued: 1,
-	TimeQueued:        testTime,
-	UuidOfQueued:      bazUuid.String(),
-}
-
-var fooDomain = console.DomainInfo{
-	Domain:            "foo.com",
-	NumberLinksTotal:  2,
-	NumberLinksQueued: 0,
-}
-
-var barDomain = console.DomainInfo{
-	Domain:            "bar.com",
-	NumberLinksTotal:  0,
-	NumberLinksQueued: 0,
-	ExcludeReason:     "Didn't like it",
-}
-
-var testDomain = console.DomainInfo{
-	Domain:            "test.com",
-	NumberLinksTotal:  8,
-	NumberLinksQueued: 2,
-	TimeQueued:        testTime,
-	UuidOfQueued:      gocql.UUID{}.String(),
-}
-
+//
+// THE TESTS
+//
 func TestListDomains(t *testing.T) {
 	store := getDs(t)
 	populate(t, store)
@@ -669,18 +682,6 @@ func TestListLinkHistorical(t *testing.T) {
 			}
 		}
 	}
-}
-
-type updatedInDb struct {
-	link   string
-	domain string
-	path   string
-}
-
-type insertTest struct {
-	omittest bool
-	tag      string
-	updated  []updatedInDb
 }
 
 func TestInsertLinks(t *testing.T) {
