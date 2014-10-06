@@ -20,7 +20,7 @@ type DomainInfo struct {
 	TimeQueued time.Time
 
 	//What was the UUID of the crawler that last crawled the domain
-	UuidOfQueued string
+	UuidOfQueued gocql.UUID
 
 	//Number of (unique) links found in this domain
 	NumberLinksTotal int
@@ -62,7 +62,7 @@ type DataStore interface {
 	Close()
 
 	// InsertLinks queues a set of URLS to be crawled
-	InsertLinks(links []string) error
+	InsertLinks(links []string) []error
 
 	// Find a specific domain
 	FindDomain(domain string) (*DomainInfo, error)
@@ -107,13 +107,13 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 	var count int
 	err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
 	if err != nil {
-		return err
+		return fmt.Errorf("seek; %v", err)
 	}
 
 	if count == 0 {
 		err := ds.Db.Query(`INSERT INTO domain_info (domain) VALUES (?)`, domain).Exec()
 		if err != nil {
-			return err
+			return fmt.Errorf("insert;", err)
 		}
 	}
 
@@ -122,20 +122,37 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 
 //NOTE: InsertLinks should try to insert as much information as possible
 //return errors for things it can't handle
-func (ds *CqlDataStore) InsertLinks(links []string) error {
+func (ds *CqlDataStore) InsertLinks(links []string) []error {
 	//
 	// Collect domains
 	//
 	var domains []string
+	var errList []error
 	var urls []*walker.URL
-	for _, link := range links {
+	for i := range links {
+		link := links[i]
 		url, err := walker.ParseURL(link)
 		if err != nil {
-			return fmt.Errorf("Link %v: %v", link, err)
+			errList = append(errList, fmt.Errorf("%v # ParseURL: %v", link, err))
+			domains = append(domains, "")
+			urls = append(urls, nil)
+			continue
+		} else if url.Scheme == "" {
+			errList = append(errList, fmt.Errorf("%v # ParseURL: undefined scheme (http:// or https://)", link))
+			domains = append(domains, "")
+			urls = append(urls, nil)
+			continue
 		}
 		domain := url.ToplevelDomainPlusOne()
-		urls = append(urls, url)
+		if domain == "" {
+			errList = append(errList, fmt.Errorf("%v # ToplevelDomainPlusOne: bad domain", link))
+			domains = append(domains, "")
+			urls = append(urls, nil)
+			continue
+		}
+
 		domains = append(domains, domain)
+		urls = append(urls, url)
 	}
 
 	//
@@ -144,26 +161,35 @@ func (ds *CqlDataStore) InsertLinks(links []string) error {
 	//
 	db := ds.Db
 	var seen = map[string]bool{}
-	for i := range domains {
+	for i := range links {
+		link := links[i]
 		d := domains[i]
 		u := urls[i]
+
+		// if you already had an error, keep going
+		if u == nil {
+			continue
+		}
 
 		if !seen[d] {
 			err := ds.addDomainIfNew(d)
 			if err != nil {
-				return err
+				errList = append(errList, fmt.Errorf("%v # addDomainIfNew: %v", link, err))
+				continue
 			}
 		}
 		seen[d] = true
+
 		err := db.Query(`INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
                                      VALUES (?, ?, ?, ?, ?)`, d, u.Subdomain(),
 			u.RequestURI(), u.Scheme, walker.NotYetCrawled).Exec()
 		if err != nil {
-			return fmt.Errorf("Link %v unable to push to links: %v", u.String(), err)
+			errList = append(errList, fmt.Errorf("%v # `insert query`: %v", link, err))
+			continue
 		}
 	}
 
-	return nil
+	return errList
 }
 
 func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, error) {
@@ -203,7 +229,7 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 		}
 		if got {
 			d.TimeQueued = t
-			d.UuidOfQueued = uuid.String()
+			d.UuidOfQueued = uuid
 		}
 	}
 
@@ -220,7 +246,7 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 		d.NumberLinksTotal = linkCount
 
 		d.NumberLinksQueued = 0
-		if d.UuidOfQueued != "" {
+		if d.TimeQueued != zeroTime {
 			segmentCount, err := ds.countUniqueLinks(d.Domain, "segments")
 			if err != nil {
 				return err

@@ -164,7 +164,7 @@ var bazDomain = console.DomainInfo{
 	NumberLinksTotal:  1,
 	NumberLinksQueued: 1,
 	TimeQueued:        testTime,
-	UuidOfQueued:      bazUuid.String(),
+	UuidOfQueued:      bazUuid,
 }
 
 var fooDomain = console.DomainInfo{
@@ -185,7 +185,7 @@ var testDomain = console.DomainInfo{
 	NumberLinksTotal:  8,
 	NumberLinksQueued: 2,
 	TimeQueued:        testTime,
-	UuidOfQueued:      gocql.UUID{}.String(),
+	UuidOfQueued:      gocql.UUID{},
 }
 
 type updatedInDb struct {
@@ -820,9 +820,9 @@ func TestInsertLinks(t *testing.T) {
 			expect[u.domain] = append(expect[u.domain], u.link)
 		}
 
-		err := store.InsertLinks(toadd)
-		if err != nil {
-			t.Errorf("InsertLinks for tag %s direct error %v", test.tag, err)
+		errList := store.InsertLinks(toadd)
+		if len(errList) != 0 {
+			t.Errorf("InsertLinks for tag %s direct error %v", test.tag, errList)
 			continue
 		}
 

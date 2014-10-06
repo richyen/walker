@@ -2,22 +2,58 @@ package console
 
 import (
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
 	"code.google.com/p/log4go"
+	"github.com/gocql/gocql"
 	"github.com/gorilla/mux"
 	"github.com/unrolled/render"
 )
 
 var DS DataStore
 
+var zeroTime = time.Time{}
+var zeroUuid = gocql.UUID{}
+
+func ftimeFunc(t time.Time) string {
+	if t == zeroTime {
+		return ""
+	} else {
+		return t.Format("2006-01-02 15:04:05 -0700")
+	}
+}
+
+func yesOnFilledFunc(s string) string {
+	if s == "" {
+		return ""
+	} else {
+		return "yes"
+	}
+}
+
+func yesOnNotZeroUuidFunc(u gocql.UUID) string {
+	if u == zeroUuid {
+		return ""
+	} else {
+		return "yes"
+	}
+}
+
 var renderer = render.New(render.Options{
 	Layout:        "layout",
 	IndentJSON:    true,
 	IsDevelopment: true,
+	Funcs: []template.FuncMap{
+		template.FuncMap{
+			"ftime":            ftimeFunc,
+			"yesOnFilled":      yesOnFilledFunc,
+			"yesOnNotZeroUuid": yesOnNotZeroUuidFunc,
+		},
+	},
 })
 
 func replyFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
@@ -54,9 +90,17 @@ func replyWithInfo(w http.ResponseWriter, template string, message string) {
 }
 
 func replyWithError(w http.ResponseWriter, template string, message string) {
+	log4go.Info("Rendered user error message %v", message)
 	replyFull(w, template, http.StatusOK,
 		"HasErrorMessage", true,
 		"ErrorMessage", []string{message})
+}
+
+func replyWithErrorList(w http.ResponseWriter, template string, messages []string) {
+	log4go.Info("Rendered user error messages %v", messages)
+	replyFull(w, template, http.StatusOK,
+		"HasErrorMessage", true,
+		"ErrorMessage", messages)
 }
 
 type Route struct {
@@ -66,17 +110,18 @@ type Route struct {
 
 func Routes() []Route {
 	return []Route{
-		Route{Path: "/", Handler: home},
+		Route{Path: "/", Handler: homeHandler},
 		Route{Path: "/list", Handler: listDomainsHandler},
 		Route{Path: "/list/", Handler: listDomainsHandler},
 		Route{Path: "/list/{seed}", Handler: listDomainsHandler},
 		Route{Path: "/find", Handler: findDomainHandler},
 		Route{Path: "/find/", Handler: findDomainHandler},
 		Route{Path: "/add", Handler: addLinkIndexHandler},
+		Route{Path: "/add/", Handler: addLinkIndexHandler},
 	}
 }
 
-func home(w http.ResponseWriter, req *http.Request) {
+func homeHandler(w http.ResponseWriter, req *http.Request) {
 	reply(w, "home")
 	return
 }
@@ -172,57 +217,45 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 		"HasNext", false)
 }
 
-type UrlInfo struct {
-	// url string
-	Link string
-
-	// when the url was last crawled (could be zero for uncrawled url)
-	CrawledOn time.Time
-}
-
-func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
-	vars := mux.Vars(req)
-	domain := vars["domain"]
-
-	linfos, err := DS.ListLinks(domain, DontSeedUrl, 0)
-	if err != nil {
-		log4go.Error("Failed to get count of domains: %v", err)
-		renderer.HTML(w, http.StatusInternalServerError, "domain/info", nil)
+func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		reply(w, "add")
 		return
 	}
-	//XXX: eventually the template will use the linfos directly: this is temporary
-	var urls []UrlInfo
-	for _, l := range linfos {
-		urls = append(urls, UrlInfo{Link: l.Url, CrawledOn: l.CrawlTime})
-	}
-	reply(w, "domain/info",
-		"Domain", domain,
-		"Links", urls)
-}
 
-func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
-	if req.Method == "POST" {
-		err := req.ParseForm()
-		if err != nil {
-			log4go.Info("Failed to parse form in add %v", err)
-		} else {
-			linksExt, ok := req.Form["links"]
-			if !ok {
-				log4go.Info("Failed to find 'links' in form submission")
-			} else {
-				lines := strings.Split(linksExt[0], "\n")
-				links := make([]string, 0, len(lines))
-				for i := range lines {
-					t := strings.TrimSpace(lines[i])
-					if t != "" {
-						links = append(links, t)
-					}
-				}
-				for _, l := range links {
-					log4go.Info("LINK ENTER: %v", l)
-				}
-			}
-		}
+	err := req.ParseForm()
+	if err != nil {
+		replyServerError(w, err)
+		return
 	}
-	reply(w, "add")
+
+	linksExt, ok := req.Form["links"]
+	if !ok {
+		replyServerError(w, err)
+		return
+	}
+
+	lines := strings.Split(linksExt[0], "\n")
+	links := make([]string, 0, len(lines))
+	for i := range lines {
+		t := strings.TrimSpace(lines[i])
+		if t == "" {
+			continue
+		}
+
+		links = append(links, t)
+	}
+
+	errList := DS.InsertLinks(links)
+	if len(errList) != 0 {
+		var s []string
+		for _, x := range errList {
+			s = append(s, x.Error())
+		}
+		replyWithErrorList(w, "add", s)
+		return
+	} else {
+		replyWithInfo(w, "add", "All links added")
+		return
+	}
 }
