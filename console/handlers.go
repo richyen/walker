@@ -20,16 +20,16 @@ var renderer = render.New(render.Options{
 	IsDevelopment: true,
 })
 
-func doRenderFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
+func replyFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
 	if len(keyValues)%2 != 0 {
-		panic(fmt.Errorf("INTERNAL ERROR: poorly used doRender: keyValues does not have even number of elements"))
+		panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: keyValues does not have even number of elements"))
 	}
 	mp := map[string]interface{}{}
 	for i := 0; i < len(keyValues); i = i + 2 {
 		protokey := keyValues[i]
 		key, keyok := protokey.(string)
 		if !keyok {
-			panic(fmt.Errorf("INTERNAL ERROR: poorly used doRender: found a non-string in keyValues"))
+			panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: found a non-string in keyValues"))
 		}
 		value := keyValues[i+1]
 		mp[key] = value
@@ -37,8 +37,26 @@ func doRenderFull(w http.ResponseWriter, template string, status int, keyValues 
 	renderer.HTML(w, status, template, mp)
 }
 
-func doRender(w http.ResponseWriter, template string, keyValues ...interface{}) {
-	doRenderFull(w, template, http.StatusOK, keyValues...)
+func reply(w http.ResponseWriter, template string, keyValues ...interface{}) {
+	replyFull(w, template, http.StatusOK, keyValues...)
+}
+
+func replyServerError(w http.ResponseWriter, err error) {
+	log4go.Error("Rendering 500: %v", err)
+	replyFull(w, "serverError", http.StatusInternalServerError,
+		"anErrorHappend", true,
+		"theError", err.Error())
+}
+func replyWithInfo(w http.ResponseWriter, template string, message string) {
+	replyFull(w, template, http.StatusOK,
+		"HasInfoMessage", true,
+		"InfoMessage", []string{message})
+}
+
+func replyWithError(w http.ResponseWriter, template string, message string) {
+	replyFull(w, template, http.StatusOK,
+		"HasErrorMessage", true,
+		"ErrorMessage", []string{message})
 }
 
 type Route struct {
@@ -58,15 +76,9 @@ func Routes() []Route {
 	}
 }
 
-func renderServerError(w http.ResponseWriter, err error) {
-	log4go.Error("Rendering 500: %v", err)
-	doRenderFull(w, "serverError", http.StatusInternalServerError,
-		"anErrorHappend", true,
-		"theError", err.Error())
-}
-
 func home(w http.ResponseWriter, req *http.Request) {
-	doRender(w, "home")
+	reply(w, "home")
+	return
 }
 
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
@@ -85,7 +97,7 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	dinfos, err := DS.ListDomains(seed, PageWindowLength)
 	if err != nil {
 		err = fmt.Errorf("ListDomains failed: %v", err)
-		renderServerError(w, err)
+		replyServerError(w, err)
 		return
 	}
 
@@ -95,7 +107,7 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 		nextDomain = url.QueryEscape(dinfos[len(dinfos)-1].Domain)
 		hasNext = true
 	}
-	doRender(w, "domains",
+	reply(w, "domains",
 		"Domains", dinfos,
 		"HasNext", hasNext,
 		"Next", nextDomain)
@@ -103,18 +115,18 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 
 func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		doRender(w, "find")
+		reply(w, "find")
 		return
 	}
 
 	err := req.ParseForm()
 	if err != nil {
-		renderServerError(w, err)
+		replyServerError(w, err)
 
 	}
 	targetAll, ok := req.Form["targets"]
 	if !ok {
-		doRender(w, "find")
+		reply(w, "find")
 		return
 	}
 
@@ -127,17 +139,16 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 	target := targets[0]
+	//XXX: change so that it handles several domains
 
 	if target == "" {
-		doRender(w, "find")
+		reply(w, "find")
 		return
 	}
 
 	t, err := url.QueryUnescape(target)
 	if err != nil {
-		doRender(w, "find",
-			"TargetMessage", fmt.Sprintf("Failed to decode domain %s", target),
-			"HasTargetMessage", true)
+		replyWithError(w, "find", fmt.Sprintf("Failed to decode domain %s", target))
 		return
 	}
 	target = t
@@ -145,20 +156,18 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	dinfo, err := DS.FindDomain(target)
 	if err != nil {
 		err = fmt.Errorf("FindDomain failed: %v", err)
-		renderServerError(w, err)
+		replyServerError(w, err)
 		return
 	}
 
 	if dinfo == nil {
-		doRender(w, "find",
-			"TargetMessage", fmt.Sprintf("Failed to find domain %s", target),
-			"HasTargetMessage", true)
+		replyWithInfo(w, "find", fmt.Sprintf("Failed to find domain %s", target))
 		return
 	}
 
 	dinfos := []DomainInfo{*dinfo}
 
-	doRender(w, "domains",
+	reply(w, "domains",
 		"Domains", dinfos,
 		"HasNext", false)
 }
@@ -186,7 +195,7 @@ func domainLookupHandler(w http.ResponseWriter, req *http.Request) {
 	for _, l := range linfos {
 		urls = append(urls, UrlInfo{Link: l.Url, CrawledOn: l.CrawlTime})
 	}
-	doRender(w, "domain/info",
+	reply(w, "domain/info",
 		"Domain", domain,
 		"Links", urls)
 }
@@ -215,5 +224,5 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-	doRender(w, "addLink")
+	reply(w, "addLink")
 }
