@@ -79,7 +79,7 @@ func (d *CassandraDispatcher) StopDispatcher() error {
 
 func (d *CassandraDispatcher) domainIterator() {
 	for {
-		log4go.Info("Starting new domain iteration")
+		log4go.Debug("Starting new domain iteration")
 		domainiter := d.db.Query(`SELECT domain FROM domain_info`).Iter()
 
 		domain := ""
@@ -151,7 +151,7 @@ func (d *CassandraDispatcher) domainAlreadyScheduled(domain string) (bool, error
 // This implementation is dumb, we're just scheduling the first 500 links we
 // haven't crawled yet. We never recrawl.
 func (d *CassandraDispatcher) generateSegment(domain string) error {
-	log4go.Info("Generating a crawl segment for %v", domain)
+	log4go.Debug("Generating a crawl segment for %v", domain)
 	iter := d.db.Query(`SELECT domain, subdomain, path, protocol, crawl_time
 						FROM links WHERE domain = ?
 						ORDER BY subdomain, path, protocol, crawl_time`, domain).Iter()
@@ -168,18 +168,18 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		if crawl_time.Equal(NotYetCrawled) {
 			if len(links) >= 500 {
 				// Stop here because we've moved on to a new link
-				log4go.Debug("Hit 500 links, not adding any more to the segment")
+				log4go.Fine("Hit 500 links, not adding any more to the segment")
 				break
 			}
 
-			log4go.Debug("Adding link to segment list: %#v", u)
+			log4go.Fine("Adding link to segment list: %#v", u)
 			links[u.String()] = u
 		} else {
 			// This means we've already crawled the link, so leave it out
 			// Because we order by crawl_time we won't hit the link again
 			// later with crawl_time == NotYetCrawled
 
-			log4go.Debug("Link already crawled, removing from segment list: %#v", u)
+			log4go.Fine("Link already crawled, removing from segment list: %#v", u)
 			delete(links, u.String())
 		}
 	}
