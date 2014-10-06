@@ -67,12 +67,12 @@ type Route struct {
 func Routes() []Route {
 	return []Route{
 		Route{Path: "/", Handler: home},
-		Route{Path: "/domains", Handler: listDomainsHandler},
-		Route{Path: "/domains/", Handler: listDomainsHandler},
-		Route{Path: "/domains/{seed}", Handler: listDomainsHandler},
+		Route{Path: "/list", Handler: listDomainsHandler},
+		Route{Path: "/list/", Handler: listDomainsHandler},
+		Route{Path: "/list/{seed}", Handler: listDomainsHandler},
 		Route{Path: "/find", Handler: findDomainHandler},
 		Route{Path: "/find/", Handler: findDomainHandler},
-		Route{Path: "/addLink", Handler: addLinkIndexHandler},
+		Route{Path: "/add", Handler: addLinkIndexHandler},
 	}
 }
 
@@ -107,7 +107,7 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 		nextDomain = url.QueryEscape(dinfos[len(dinfos)-1].Domain)
 		hasNext = true
 	}
-	reply(w, "domains",
+	reply(w, "list",
 		"Domains", dinfos,
 		"HasNext", hasNext,
 		"Next", nextDomain)
@@ -167,7 +167,7 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 
 	dinfos := []DomainInfo{*dinfo}
 
-	reply(w, "domains",
+	reply(w, "list",
 		"Domains", dinfos,
 		"HasNext", false)
 }
@@ -204,7 +204,7 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method == "POST" {
 		err := req.ParseForm()
 		if err != nil {
-			log4go.Info("Failed to parse form in addLink %v", err)
+			log4go.Info("Failed to parse form in add %v", err)
 		} else {
 			linksExt, ok := req.Form["links"]
 			if !ok {
@@ -224,5 +224,5 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-	reply(w, "addLink")
+	reply(w, "add")
 }

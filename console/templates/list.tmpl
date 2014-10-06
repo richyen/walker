@@ -1,0 +1,13 @@
+<h2>List of Domains</h2>
+
+<ul>
+{{range .Domains}}
+  <li>{{.}}</li>
+{{end}}
+</ul>
+
+
+{{if .HasNext}}
+    <a href="/list/{{.Next}}"> <h3> Next </h3> </a>
+{{end}}
+
