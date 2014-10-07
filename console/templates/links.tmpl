@@ -1,0 +1,95 @@
+<style>
+table, th, td {
+    border: 1px solid black;
+    border-collapse: collapse;
+}
+th,td {
+    padding-right: 5px;
+    padding-left: 5px;
+    padding-bottom: 2pt;
+    padding-top: 2pt;
+}
+/*Center columns after the first*/
+td + td, th + th {
+    text-align: center;
+}
+</style>
+
+{{define "linkHeader"}}
+    <tr>
+        <th> Link </th>
+        <th> Status </th>
+        <th> Error </th>
+        <th> Excluded </th>
+        <th> Fetched </th>
+    </tr>
+{{end}}
+
+{{define "link"}}
+    <tr>
+        <td> {{.Url}} </td>
+        <td> {{statusText .Status}} </td>
+        <td> {{yesOnFilled .Error}} </td>
+        <td> {{yesOnTrue .RobotsExcluded}} </td>
+        <td> {{ftime .CrawlTime}} </td>
+    </tr>
+{{end}}
+
+
+
+<h2> Links for domain {{.Dinfo.Domain}} </h2>
+
+<table class="header-table">
+    <tr>
+        <th> Field </th>
+        <th> Value </th>
+    </tr>
+    
+    <tr>
+        <td> Domain </td>
+        <td>  {{.Dinfo.Domain}} </td>
+    </tr>
+    
+    <tr>
+        <td> Domain </td>
+        <td>  {{.Dinfo.Domain}} </td>
+    </tr>
+    
+    <tr>
+        <td> ExcludeReason </td>
+        <td>  {{.Dinfo.ExcludeReason}} </td>
+    </tr>
+    
+    <tr>
+        <td> TimeQueued </td>
+        <td>  {{ftime .Dinfo.TimeQueued}} </td>
+    </tr>
+    
+    <tr>
+        <td> UuidOfQueued </td>
+        <td>  {{fuuid .Dinfo.UuidOfQueued}} </td>
+    </tr>
+    
+    <tr>
+        <td> NumberLinksTotal </td>
+        <td>  {{.Dinfo.NumberLinksTotal}} </td>
+    </tr>
+    
+    <tr>
+        <td> NumberLinksQueued </td>
+        <td>  {{.Dinfo.NumberLinksQueued}} </td>
+    </tr>
+</table>
+<br><br><br>
+
+<table>
+    {{template "linkHeader"}}
+    {{range .Linfos}}
+        {{template "link" .}}
+    {{end}}
+</table>
+
+{{if .HasNext}}
+    <a href="/links/{{.Dinfo.Domain}}/{{.NextSeedUrl}}"> <h3> Next </h3> </a>
+{{end}}
+
