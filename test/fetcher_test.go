@@ -50,6 +50,8 @@ const html_test_links string = `<!DOCTYPE html>
 	<a href="/abs-relative-page/page.html">link</a>
 	<a href="https://other.org/abs-dir/">link</a>
 	<a href="https://other.org/abs-page/page.html">link</a>
+	<a href="javascript:doStuff();">link</a>
+	<a href="ftp:ignoreme.zip;">link</a>
 </div>
 </html>`
 

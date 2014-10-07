@@ -38,6 +38,7 @@ type WalkerConfig struct {
 	MaxDNSCacheEntries      int      `yaml:"max_dns_cache_entries"`
 	UserAgent               string   `yaml:"user_agent"`
 	AcceptFormats           []string `yaml:"accept_formats"`
+	AcceptProtocols         []string `yaml:"accept_protocols"`
 	DefaultCrawlDelay       int      `yaml:"default_crawl_delay"`
 	MaxHTTPContentSizeBytes int64    `yaml:"max_http_content_size_bytes"`
 	IgnoreTags              []string `yaml:"ignore_tags"`
@@ -90,6 +91,7 @@ func SetDefaultConfig() {
 	Config.MaxDNSCacheEntries = 20000
 	Config.UserAgent = "Walker (http://github.com/iParadigms/walker)"
 	Config.AcceptFormats = []string{"text/html", "text/*;"} //NOTE you can add quality factors by doing "text/html; q=0.4"
+	Config.AcceptProtocols = []string{"http", "https"}
 	Config.DefaultCrawlDelay = 1
 	Config.MaxHTTPContentSizeBytes = 20 * 1024 * 1024 // 20MB
 	Config.IgnoreTags = []string{"script", "img", "link"}
