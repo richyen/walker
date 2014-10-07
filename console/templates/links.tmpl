@@ -16,80 +16,75 @@ td + td, th + th {
 }
 </style>
 
-{{define "linkHeader"}}
-    <thead>
-        <th> Link </th>
-        <th> Status </th>
-        <th> Error </th>
-        <th> Excluded </th>
-        <th> Fetched </th>
-    </thead>
+{{if .HeaderPage}}
+    <h2> Domain information for {{.Dinfo.Domain}} </h2>
+    <table>
+        <tr>
+            <th> Field </th>
+            <th> Value </th>
+        </tr>
+        
+        <tr>
+            <td> Domain </td>
+            <td>  {{.Dinfo.Domain}} </td>
+        </tr>
+        
+        <tr>
+            <td> ExcludeReason </td>
+            <td>  {{.Dinfo.ExcludeReason}} </td>
+        </tr>
+        
+        <tr>
+            <td> TimeQueued </td>
+            <td>  {{ftime .Dinfo.TimeQueued}} </td>
+        </tr>
+        
+        <tr>
+            <td> UuidOfQueued </td>
+            <td>  {{fuuid .Dinfo.UuidOfQueued}} </td>
+        </tr>
+        
+        <tr>
+            <td> NumberLinksTotal </td>
+            <td>  {{.Dinfo.NumberLinksTotal}} </td>
+        </tr>
+        
+        <tr>
+            <td> NumberLinksQueued </td>
+            <td>  {{.Dinfo.NumberLinksQueued}} </td>
+        </tr>
+    </table>
+    <br><br><br>
 {{end}}
-
-{{define "link"}}
-    <tr>
-        <td> {{.Url}} </td>
-        <td> {{statusText .Status}} </td>
-        <td> {{yesOnFilled .Error}} </td>
-        <td> {{yesOnTrue .RobotsExcluded}} </td>
-        <td> {{ftime .CrawlTime}} </td>
-    </tr>
-{{end}}
-
-
-
-<h2> Links for domain {{.Dinfo.Domain}} </h2>
-
-<table>
-    <tr>
-        <th> Field </th>
-        <th> Value </th>
-    </tr>
-    
-    <tr>
-        <td> Domain </td>
-        <td>  {{.Dinfo.Domain}} </td>
-    </tr>
-    
-    <tr>
-        <td> ExcludeReason </td>
-        <td>  {{.Dinfo.ExcludeReason}} </td>
-    </tr>
-    
-    <tr>
-        <td> TimeQueued </td>
-        <td>  {{ftime .Dinfo.TimeQueued}} </td>
-    </tr>
-    
-    <tr>
-        <td> UuidOfQueued </td>
-        <td>  {{fuuid .Dinfo.UuidOfQueued}} </td>
-    </tr>
-    
-    <tr>
-        <td> NumberLinksTotal </td>
-        <td>  {{.Dinfo.NumberLinksTotal}} </td>
-    </tr>
-    
-    <tr>
-        <td> NumberLinksQueued </td>
-        <td>  {{.Dinfo.NumberLinksQueued}} </td>
-    </tr>
-</table>
-<br><br><br>
-
 
 {{if .HasLinks}}
+    <h2> Links for domain {{.Dinfo.Domain}} </h2>
     <table>
-        {{template "linkHeader"}}
+        <thead>
+            <th> Link </th>
+            <th> Status </th>
+            <th> Error </th>
+            <th> Excluded </th>
+            <th> Fetched </th>
+        </thead>
         <tbody>
             {{range .Linfos}}
-                {{template "link" .}}
+                <tr>
+                    <td> {{.Url}} </td>
+                    <td> {{statusText .Status}} </td>
+                    <td> {{yesOnFilled .Error}} </td>
+                    <td> {{yesOnTrue .RobotsExcluded}} </td>
+                    <td> {{ftime .CrawlTime}} </td>
+                </tr>
             {{end}}
         </tbody>
     </table>
 {{else}}
-    No links for domain {{.Dinfo.Domain}}
+    <h2> No links for domain {{.Dinfo.Domain}} </h2>
+{{end}}
+
+{{if not .HeaderPage}}
+    <a href="" onclick="window.history.back()"> <h3> MaybePrevious </h3> </a>
 {{end}}
 
 {{if .HasNext}}

@@ -17,39 +17,32 @@ td + td {
 </style>
 
 
-
-{{define "domSimpleHeader"}}
-    <tr> 
+<h2>List of Domains</h2>
+<table>
+    <thead> 
       <td> Domain </td>
       <td> LinksTotal </td>
       <td> LinksQueued </td>
 
       <td> Excluded </td>
       <td> ActiveSince </td>
-    </tr>
-{{end}}
+    </thead>
 
-{{define "domSimple"}}
-    <tr> 
-      <td> <a href="/links/{{.Domain}}"> {{.Domain}} </a> </td>
-      <td> {{.NumberLinksTotal}} </td>
-      <td> {{.NumberLinksQueued}} </td>
-
-      <td> {{yesOnFilled .ExcludeReason}} </td>
-      <td> {{activeSince .TimeQueued}}
-
-    </tr>
-{{end}}
-
-
-<h2>List of Domains</h2>
-<table>
-    {{template "domSimpleHeader"}}
     {{range .Domains}}
-        {{template "domSimple" .}}
+        <tr> 
+          <td> <a href="/links/{{.Domain}}"> {{.Domain}} </a> </td>
+          <td> {{.NumberLinksTotal}} </td>
+          <td> {{.NumberLinksQueued}} </td>
+
+          <td> {{yesOnFilled .ExcludeReason}} </td>
+          <td> {{activeSince .TimeQueued}}
+        </tr>
     {{end}}
 </table>
 
+{{if .NeedPrev}}
+    <a href="" onclick="window.history.back()"> <h3> MaybePrevious </h3> </a>
+{{end}}
 {{if .HasNext}}
     <a href="/list/{{.Next}}"> <h3> Next </h3> </a>
 {{end}}

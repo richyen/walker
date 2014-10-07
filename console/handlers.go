@@ -153,8 +153,10 @@ func homeHandler(w http.ResponseWriter, req *http.Request) {
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	seed := vars["seed"]
+	needPrev := true
 	if seed == "" {
 		seed = DontSeedDomain
+		needPrev = false
 	} else {
 		var err error
 		seed, err = url.QueryUnescape(seed)
@@ -177,6 +179,7 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 		hasNext = true
 	}
 	reply(w, "list",
+		"NeedPrev", needPrev,
 		"Domains", dinfos,
 		"HasNext", hasNext,
 		"Next", nextDomain)
@@ -320,7 +323,12 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	seedUrl := vars["seedUrl"]
-	if seedUrl != "" {
+	needHeader := false
+	windowLength := PageWindowLength
+	if seedUrl == "" {
+		needHeader = true
+		windowLength /= 2
+	} else {
 		ss, err := decode32(seedUrl)
 		if err != nil {
 			replyServerError(w, fmt.Errorf("QueryUnescape: %v", err))
@@ -329,7 +337,7 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 		seedUrl = ss
 	}
 
-	linfos, err := DS.ListLinks(domain, seedUrl, PageWindowLength)
+	linfos, err := DS.ListLinks(domain, seedUrl, windowLength)
 	if err != nil {
 		replyServerError(w, fmt.Errorf("ListLinks: %v", err))
 		return
@@ -337,13 +345,13 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 
 	nextSeedUrl := ""
 	hasNext := false
-	if len(linfos) == PageWindowLength {
+	if len(linfos) == windowLength {
 		nextSeedUrl = encode32(linfos[len(linfos)-1].Url)
-
 		hasNext = true
 	}
 	reply(w, "links",
 		"Dinfo", dinfo,
+		"HeaderPage", needHeader,
 		"HasLinks", len(linfos) > 0,
 		"Linfos", linfos,
 		"HasNext", hasNext,
