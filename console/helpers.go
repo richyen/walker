@@ -2,7 +2,7 @@ package console
 
 import ()
 
-const PageWindowLength = 25
+const PageWindowLength = 15
 
 func computeDomainPagination(linkPrefix string, dinfos []DomainInfo, windowLength int) []string {
 	r := []string{}
