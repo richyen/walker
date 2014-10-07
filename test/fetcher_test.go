@@ -36,6 +36,23 @@ const html_body_nolinks string = `<!DOCTYPE html>
 </div>
 </html>`
 
+const html_test_links string = `<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Test links page</title>
+</head>
+
+<div id="menu">
+	<a href="relative-dir/">link</a>
+	<a href="relative-page/page.html">link</a>
+	<a href="/abs-relative-dir/">link</a>
+	<a href="/abs-relative-page/page.html">link</a>
+	<a href="https://other.org/abs-dir/">link</a>
+	<a href="https://other.org/abs-page/page.html">link</a>
+</div>
+</html>`
+
 func TestBasicFetchManagerRun(t *testing.T) {
 	ds := &MockDatastore{}
 	ds.On("ClaimNewHost").Return("norobots.com").Once()
@@ -60,6 +77,12 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		parse("http://accept.com/donthandle"),
 	})
 	ds.On("UnclaimHost", "accept.com").Return()
+
+	ds.On("ClaimNewHost").Return("linktests.com").Once()
+	ds.On("LinksForHost", "linktests.com").Return([]*walker.URL{
+		parse("http://linktests.com/links/test.html"),
+	})
+	ds.On("UnclaimHost", "linktests.com").Return()
 
 	// This last call will make ClaimNewHost return "" on each subsequent call,
 	// which will put the fetcher to sleep.
@@ -97,6 +120,9 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	rs.SetResponse("http://accept.com/donthandle", &MockResponse{
 		ContentType: "foo/bar",
 	})
+	rs.SetResponse("http://linktests.com/links/test.html", &MockResponse{
+		Body: html_test_links,
+	})
 	manager := &walker.FetchManager{
 		Datastore: ds,
 		Handler:   h,
@@ -127,6 +153,7 @@ func TestBasicFetchManagerRun(t *testing.T) {
 			recvTextHtml = true
 		case "http://accept.com/accept_text.txt":
 			recvTextPlain = true
+		case "http://linktests.com/links/test.html":
 		default:
 			t.Errorf("Got a Handler.HandleResponse call we didn't expect: %v", fr)
 		}
@@ -136,6 +163,27 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	}
 	if !recvTextPlain {
 		t.Errorf("Failed to handle Content-Type: text/plain")
+	}
+
+	// Link tests to ensure we resolve URLs to proper absolute forms
+	for _, call := range ds.Calls {
+		if call.Method == "StoreParsedURL" {
+			u := call.Arguments.Get(0).(*walker.URL)
+			fr := call.Arguments.Get(1).(*walker.FetchResults)
+			if fr.URL.String() != "http://linktests.com/links/test.html" {
+				continue
+			}
+			switch u.String() {
+			case "http://linktests.com/links/relative-dir/":
+			case "http://linktests.com/links/relative-page/page.html":
+			case "http://linktests.com/abs-relative-dir/":
+			case "http://linktests.com/abs-relative-page/page.html":
+			case "https://other.org/abs-dir/":
+			case "https://other.org/abs-page/page.html":
+			default:
+				t.Errorf("StoreParsedURL call we didn't expect: %v", u)
+			}
+		}
 	}
 
 	ds.AssertExpectations(t)
