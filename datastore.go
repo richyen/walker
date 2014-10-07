@@ -127,7 +127,7 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 				if err != nil {
 					log4go.Error("Failed to claim segment %v: %v", domain, err)
 				} else {
-					log4go.Info("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
+					log4go.Debug("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
 					ds.domains = append(ds.domains, domain)
 				}
 			}
