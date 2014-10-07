@@ -1,0 +1,7 @@
+<logging>
+	<filter enabled="true">
+		<tag>stdout</tag>
+		<type>console</type>
+		<level>INFO</level>
+	</filter>
+</logging>

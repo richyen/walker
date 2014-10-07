@@ -251,6 +251,7 @@ func (f *fetcher) start() {
 		if f.host != "" {
 			//TODO: ensure that this unclaim will happen... probably want the
 			//logic below in a function where the Unclaim is deferred
+			log4go.Debug("Finished crawling %v, unclaiming", f.host)
 			f.fm.Datastore.UnclaimHost(f.host)
 		}
 
@@ -285,6 +286,7 @@ func (f *fetcher) start() {
 			fr := &FetchResults{URL: link}
 
 			if f.robots != nil && !f.robots.Test(link.String()) {
+				log4go.Debug("Not fetching due to robots rules: %v", link)
 				fr.ExcludedByRobots = true
 				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
@@ -343,12 +345,12 @@ func (f *fetcher) start() {
 				f.fm.Handler.HandleResponse(fr)
 			} else {
 				ctype := strings.Join(fr.Response.Header["Content-Type"], ",")
-				log4go.Debug("Not handling url %v -- `Content-Type: %v`", fr.URL.String(), ctype)
+				log4go.Debug("Not handling url %v -- `Content-Type: %v`", link, ctype)
 			}
 
 			//TODO: Wrap the reader and check for read error here
+			log4go.Debug("Storing fetch results for %v", link)
 			f.fm.Datastore.StoreURLFetchResults(fr)
-
 		}
 	}
 }
@@ -391,9 +393,8 @@ func (f *fetcher) fetch(u *URL) (*http.Response, error) {
 
 	req.Header.Set("User-Agent", Config.UserAgent)
 	req.Header.Set("Accept", strings.Join(Config.AcceptFormats, ","))
-	//TODO: set headers? req.Header[] = ...
 
-	// Do the request.
+	log4go.Debug("Sending request: %+v", req)
 	res, err := f.httpclient.Do(req)
 	if err != nil {
 		return nil, err
