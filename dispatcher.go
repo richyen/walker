@@ -46,6 +46,7 @@ type CassandraDispatcher struct {
 }
 
 func (d *CassandraDispatcher) StartDispatcher() error {
+	log4go.Info("Starting CassandraDispatcher")
 	d.cf = GetCassandraConfig()
 	var err error
 	d.db, err = d.cf.CreateSession()
@@ -71,6 +72,7 @@ func (d *CassandraDispatcher) StartDispatcher() error {
 }
 
 func (d *CassandraDispatcher) StopDispatcher() error {
+	log4go.Info("Stopping CassandraDispatcher")
 	close(d.quit)
 	d.wg.Wait()
 	d.db.Close()
@@ -86,7 +88,7 @@ func (d *CassandraDispatcher) domainIterator() {
 		for domainiter.Scan(&domain) {
 			select {
 			case <-d.quit:
-				log4go.Info("Domain iterator signaled to stop")
+				log4go.Debug("Domain iterator signaled to stop")
 				close(d.domains)
 				return
 			default:
@@ -98,7 +100,7 @@ func (d *CassandraDispatcher) domainIterator() {
 		// Check for exit here as well in case domain_info is empty
 		select {
 		case <-d.quit:
-			log4go.Info("Domain iterator signaled to stop")
+			log4go.Debug("Domain iterator signaled to stop")
 			close(d.domains)
 			return
 		default:
@@ -151,7 +153,7 @@ func (d *CassandraDispatcher) domainAlreadyScheduled(domain string) (bool, error
 // This implementation is dumb, we're just scheduling the first 500 links we
 // haven't crawled yet. We never recrawl.
 func (d *CassandraDispatcher) generateSegment(domain string) error {
-	log4go.Debug("Generating a crawl segment for %v", domain)
+	log4go.Info("Generating a crawl segment for %v", domain)
 	iter := d.db.Query(`SELECT domain, subdomain, path, protocol, crawl_time
 						FROM links WHERE domain = ?
 						ORDER BY subdomain, path, protocol, crawl_time`, domain).Iter()
@@ -203,6 +205,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	if err != nil {
 		return fmt.Errorf("error inserting %v to domains_to_crawl: %v", domain, err)
 	}
+	log4go.Info("Generated segment for %v (%v links)", domain, len(links))
 
 	// Batch insert -- may be faster but hard to figured out what happened on
 	// errors
