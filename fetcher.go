@@ -251,7 +251,7 @@ func (f *fetcher) start() {
 		if f.host != "" {
 			//TODO: ensure that this unclaim will happen... probably want the
 			//logic below in a function where the Unclaim is deferred
-			log4go.Debug("Finished crawling %v, unclaiming", f.host)
+			log4go.Info("Finished crawling %v, unclaiming", f.host)
 			f.fm.Datastore.UnclaimHost(f.host)
 		}
 
@@ -277,7 +277,7 @@ func (f *fetcher) start() {
 		if f.robots != nil && int(f.robots.CrawlDelay) > Config.DefaultCrawlDelay {
 			f.crawldelay = f.robots.CrawlDelay
 		}
-		log4go.Debug("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
+		log4go.Info("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
 
 		for link := range f.fm.Datastore.LinksForHost(f.host) {
 
@@ -323,7 +323,7 @@ func (f *fetcher) start() {
 
 				outlinks, err := getLinks(body)
 				if err != nil {
-					log4go.Warn("error parsing HTML for page %v: %v", link, err)
+					log4go.Debug("error parsing HTML for page %v: %v", link, err)
 				} else {
 					for _, outlink := range outlinks {
 						if outlink.Scheme == "" {
@@ -332,7 +332,7 @@ func (f *fetcher) start() {
 						if outlink.Host == "" {
 							outlink.Host = link.Host
 						}
-						log4go.Debug("Parsed link: %v", outlink)
+						log4go.Fine("Parsed link: %v", outlink)
 						f.fm.Datastore.StoreParsedURL(outlink, fr)
 					}
 				}
@@ -371,14 +371,14 @@ func (f *fetcher) fetchRobots(host string) {
 	}
 	res, err := f.fetch(u)
 	if err != nil {
-		log4go.Info("Could not fetch %v, assuming there is no robots.txt (error: %v)", u, err)
+		log4go.Debug("Could not fetch %v, assuming there is no robots.txt (error: %v)", u, err)
 		f.robots = nil
 		return
 	}
 	robots, err := robotstxt.FromResponse(res)
 	res.Body.Close()
 	if err != nil {
-		log4go.Info("Error parsing robots.txt (%v) assuming there is no robots.txt: %v", u, err)
+		log4go.Debug("Error parsing robots.txt (%v) assuming there is no robots.txt: %v", u, err)
 		f.robots = nil
 		return
 	}
@@ -420,7 +420,7 @@ func (f *fetcher) checkForBlacklisting(host string) bool {
 	if err != nil {
 		//TODO: blacklist this domain in the datastore as couldn't connect;
 		//maybe try a few times
-		log4go.Info("Could not connect to host (%v, %v), blacklisting", host, err)
+		log4go.Debug("Could not connect to host (%v, %v), blacklisting", host, err)
 		return true
 	}
 	defer conn.Close()
@@ -428,7 +428,7 @@ func (f *fetcher) checkForBlacklisting(host string) bool {
 	if Config.BlacklistPrivateIPs && isPrivateAddr(conn.RemoteAddr().String()) {
 		//TODO: mark this domain as blacklisted  in the datastore for resolving
 		//to a private IP
-		log4go.Info("Host (%v) resolved to private IP address, blacklisting", host)
+		log4go.Debug("Host (%v) resolved to private IP address, blacklisting", host)
 		return true
 	}
 	return false
