@@ -94,7 +94,7 @@ func spoofDs() (ds *console.CqlDataStore) {
 		panic(err)
 	}
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 109; i++ {
 		err = db.Query(insertLink, "lotsalinks.com", "",
 			fmt.Sprintf("/page%d.html", i),
 			"http", walker.NotYetCrawled,

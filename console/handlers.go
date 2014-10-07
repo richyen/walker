@@ -47,7 +47,11 @@ func activeSinceFunc(t time.Time) string {
 }
 
 func ftimeFunc(t time.Time) string {
-	return t.Format(timeFormat)
+	if t == zeroTime {
+		return ""
+	} else {
+		return t.Format(timeFormat)
+	}
 }
 
 func fuuidFunc(u gocql.UUID) string {
@@ -316,12 +320,14 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	seedUrl := vars["seedUrl"]
-	ss, err := decode32(seedUrl)
-	if err != nil {
-		replyServerError(w, fmt.Errorf("QueryUnescape: %v", err))
-		return
+	if seedUrl != "" {
+		ss, err := decode32(seedUrl)
+		if err != nil {
+			replyServerError(w, fmt.Errorf("QueryUnescape: %v", err))
+			return
+		}
+		seedUrl = ss
 	}
-	seedUrl = ss
 
 	linfos, err := DS.ListLinks(domain, seedUrl, PageWindowLength)
 	if err != nil {
@@ -338,6 +344,7 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	reply(w, "links",
 		"Dinfo", dinfo,
+		"HasLinks", len(linfos) > 0,
 		"Linfos", linfos,
 		"HasNext", hasNext,
 		"NextSeedUrl", nextSeedUrl)

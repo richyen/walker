@@ -4,25 +4,26 @@ table, th, td {
     border-collapse: collapse;
 }
 th,td {
-    padding-right: 5px;
+    /*padding-right: 5px;
     padding-left: 5px;
-    padding-bottom: 2pt;
-    padding-top: 2pt;
+    padding-bottom: 0pt;
+    padding-top: 0pt;*/
+    padding: 4px;
 }
 /*Center columns after the first*/
 td + td, th + th {
-    text-align: center;
+    /*text-align: center;*/
 }
 </style>
 
 {{define "linkHeader"}}
-    <tr>
+    <thead>
         <th> Link </th>
         <th> Status </th>
         <th> Error </th>
         <th> Excluded </th>
         <th> Fetched </th>
-    </tr>
+    </thead>
 {{end}}
 
 {{define "link"}}
@@ -39,15 +40,10 @@ td + td, th + th {
 
 <h2> Links for domain {{.Dinfo.Domain}} </h2>
 
-<table class="header-table">
+<table>
     <tr>
         <th> Field </th>
         <th> Value </th>
-    </tr>
-    
-    <tr>
-        <td> Domain </td>
-        <td>  {{.Dinfo.Domain}} </td>
     </tr>
     
     <tr>
@@ -82,12 +78,19 @@ td + td, th + th {
 </table>
 <br><br><br>
 
-<table>
-    {{template "linkHeader"}}
-    {{range .Linfos}}
-        {{template "link" .}}
-    {{end}}
-</table>
+
+{{if .HasLinks}}
+    <table>
+        {{template "linkHeader"}}
+        <tbody>
+            {{range .Linfos}}
+                {{template "link" .}}
+            {{end}}
+        </tbody>
+    </table>
+{{else}}
+    No links for domain {{.Dinfo.Domain}}
+{{end}}
 
 {{if .HasNext}}
     <a href="/links/{{.Dinfo.Domain}}/{{.NextSeedUrl}}"> <h3> Next </h3> </a>
