@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"code.google.com/p/log4go"
+	"encoding/base32"
 	"github.com/gocql/gocql"
 	"github.com/gorilla/mux"
 	"github.com/unrolled/render"
@@ -18,14 +19,7 @@ var DS DataStore
 
 var zeroTime = time.Time{}
 var zeroUuid = gocql.UUID{}
-
-func ftimeFunc(t time.Time) string {
-	if t == zeroTime {
-		return ""
-	} else {
-		return t.Format("2006-01-02 15:04:05 -0700")
-	}
-}
+var timeFormat = "2006-01-02 15:04:05 -0700"
 
 func yesOnFilledFunc(s string) string {
 	if s == "" {
@@ -35,13 +29,34 @@ func yesOnFilledFunc(s string) string {
 	}
 }
 
-func yesOnNotZeroUuidFunc(u gocql.UUID) string {
-	if u == zeroUuid {
-		return ""
-	} else {
+func yesOnTrueFunc(q bool) string {
+	if q {
 		return "yes"
+	} else {
+		return ""
+	}
+
+}
+
+func activeSinceFunc(t time.Time) string {
+	if t == zeroTime {
+		return "-"
+	} else {
+		return t.Format(timeFormat)
 	}
 }
+
+func ftimeFunc(t time.Time) string {
+	return t.Format(timeFormat)
+}
+
+func fuuidFunc(u gocql.UUID) string {
+	return u.String()
+}
+
+// func statusText(status int) string {
+// 	return http.StatusText(status)
+// }
 
 var renderer = render.New(render.Options{
 	Layout:        "layout",
@@ -49,9 +64,12 @@ var renderer = render.New(render.Options{
 	IsDevelopment: true,
 	Funcs: []template.FuncMap{
 		template.FuncMap{
-			"ftime":            ftimeFunc,
-			"yesOnFilled":      yesOnFilledFunc,
-			"yesOnNotZeroUuid": yesOnNotZeroUuidFunc,
+			"yesOnFilled": yesOnFilledFunc,
+			"activeSince": activeSinceFunc,
+			"ftime":       ftimeFunc,
+			"fuuid":       fuuidFunc,
+			"statusText":  http.StatusText,
+			"yesOnTrue":   yesOnTrueFunc,
 		},
 	},
 })
@@ -118,6 +136,8 @@ func Routes() []Route {
 		Route{Path: "/find/", Handler: findDomainHandler},
 		Route{Path: "/add", Handler: addLinkIndexHandler},
 		Route{Path: "/add/", Handler: addLinkIndexHandler},
+		Route{Path: "/links/{domain}", Handler: linksHandler},
+		Route{Path: "/links/{domain}/{seedUrl}", Handler: linksHandler},
 	}
 }
 
@@ -258,4 +278,69 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 		replyWithInfo(w, "add", "All links added")
 		return
 	}
+}
+
+//IMPL NOTE: Why does linksHandler encode the seedUrl in base32, rather than URL encode it?
+// The reason is that various components along the way are tripping on the appearance of the
+// seedUrl argument. First, it appears that the browser is unencoding the link BEFORE submitting it
+// to the server. That looks like a problem with the browser to me. But in addition, the server appears
+// to be choking on the url-encoded text as well. For example if the url encoded seedUrl ends with
+// .html, it appears that this is causing the server to throw a 301. Unknown why that is. But the net effect
+// is that, if I totally disguise the link in base32, everything works.
+func decode32(s string) (string, error) {
+	b, err := base32.StdEncoding.DecodeString(s)
+	return string(b), err
+}
+
+func encode32(s string) string {
+	b := base32.StdEncoding.EncodeToString([]byte(s))
+	return string(b)
+}
+
+func linksHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	domain := vars["domain"]
+	if domain == "" {
+		replyServerError(w, fmt.Errorf("User failed to specify domain for linksHandler"))
+		return
+	}
+	dinfo, err := DS.FindDomain(domain)
+	if err != nil {
+		replyServerError(w, fmt.Errorf("FindDomain: %v", err))
+		return
+	}
+
+	if dinfo == nil {
+		replyServerError(w, fmt.Errorf("User failed to specify domain for linksHandler"))
+		return
+	}
+
+	seedUrl := vars["seedUrl"]
+	ss, err := decode32(seedUrl)
+	if err != nil {
+		replyServerError(w, fmt.Errorf("QueryUnescape: %v", err))
+		return
+	}
+	seedUrl = ss
+
+	linfos, err := DS.ListLinks(domain, seedUrl, PageWindowLength)
+	if err != nil {
+		replyServerError(w, fmt.Errorf("ListLinks: %v", err))
+		return
+	}
+
+	nextSeedUrl := ""
+	hasNext := false
+	if len(linfos) == PageWindowLength {
+		nextSeedUrl = encode32(linfos[len(linfos)-1].Url)
+
+		hasNext = true
+	}
+	reply(w, "links",
+		"Dinfo", dinfo,
+		"Linfos", linfos,
+		"HasNext", hasNext,
+		"NextSeedUrl", nextSeedUrl)
+
+	return
 }

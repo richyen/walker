@@ -44,6 +44,7 @@ func spoofDs() (ds *console.CqlDataStore) {
 	insertDomainToCrawl := `INSERT INTO domains_to_crawl (domain, crawler_token, priority, claim_time) VALUES (?, ?, ?, ?)`
 	insertSegment := `INSERT INTO segments (domain, subdomain, path, protocol) VALUES (?, ?, ?, ?)`
 	insertLink := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	rUuid, _ := gocql.RandomUUID()
 
 	queries := []*gocql.Query{
 		db.Query(insertDomainInfo, "test.com", false, "", ""),
@@ -57,7 +58,7 @@ func spoofDs() (ds *console.CqlDataStore) {
 		db.Query(insertLink, "test.com", "sub", "/page7.html", "https", walker.NotYetCrawled, 200, "", false),
 		db.Query(insertLink, "test.com", "sub", "/page8.html", "https", walker.NotYetCrawled, 200, "", false),
 
-		db.Query(insertDomainToCrawl, "test.com", gocql.UUID{}, 0, time.Now()),
+		db.Query(insertDomainToCrawl, "test.com", rUuid, 0, time.Now()),
 		db.Query(insertSegment, "test.com", "", "/page1.html", "http"),
 		db.Query(insertSegment, "test.com", "", "/page2.html", "http"),
 
@@ -83,6 +84,21 @@ func spoofDs() (ds *console.CqlDataStore) {
 	for i := 0; i < 100; i++ {
 		domain := fmt.Sprintf("x%d.com", i)
 		err := db.Query(insertDomainInfo, domain, false, "", "").Exec()
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	err = db.Query(insertDomainInfo, "lotsalinks.com", false, "", "").Exec()
+	if err != nil {
+		panic(err)
+	}
+
+	for i := 0; i < 100; i++ {
+		err = db.Query(insertLink, "lotsalinks.com", "",
+			fmt.Sprintf("/page%d.html", i),
+			"http", walker.NotYetCrawled,
+			200, "", false).Exec()
 		if err != nil {
 			panic(err)
 		}

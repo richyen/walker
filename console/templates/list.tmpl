@@ -1,29 +1,4 @@
-<h2>List of Domains</h2>
 
-
-{{define "domSimpleHeader"}}
-    <tr> 
-      <td> Domain </td>
-      <td> Active </td>
-      <td> LinksTotal </td>
-      <td> LinksQueued </td>
-      <td> LastQueued </td>
-      <td> Excluded </td>
-
-    </tr>
-{{end}}
-
-{{define "domSimple"}}
-    <tr> 
-      <td> {{.Domain}} </td>
-      <td> {{yesOnNotZeroUuid .Domain}} </td>
-      <td> {{.NumberLinksTotal}} </td>
-      <td> {{.NumberLinksQueued}} </td>
-      <td> {{ftime .TimeQueued}} </td>
-      <td> {{yesOnFilled .ExcludeReason}} </td>
-
-    </tr>
-{{end}}
 
 <style>
 table, th, td {
@@ -35,7 +10,6 @@ th,td {
     padding-left: 5px;
     padding-bottom: 2pt;
     padding-top: 2pt;
-
 }
 /*Center columns after the first*/
 td + td {
@@ -43,6 +17,33 @@ td + td {
 }
 </style>
 
+
+
+{{define "domSimpleHeader"}}
+    <tr> 
+      <td> Domain </td>
+      <td> LinksTotal </td>
+      <td> LinksQueued </td>
+
+      <td> Excluded </td>
+      <td> ActiveSince </td>
+    </tr>
+{{end}}
+
+{{define "domSimple"}}
+    <tr> 
+      <td> {{.Domain}} </td>
+      <td> {{.NumberLinksTotal}} </td>
+      <td> {{.NumberLinksQueued}} </td>
+
+      <td> {{yesOnFilled .ExcludeReason}} </td>
+      <td> {{activeSince .TimeQueued}}
+
+    </tr>
+{{end}}
+
+
+<h2>List of Domains</h2>
 <table>
     {{template "domSimpleHeader"}}
     {{range .Domains}}
