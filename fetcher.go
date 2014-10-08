@@ -118,6 +118,16 @@ func (u *URL) Subdomain() string {
 	return strings.TrimSuffix(u.Host, "."+tld)
 }
 
+// MakeAbsolute uses URL.ResolveReference to make this URL object an absolute
+// reference (having Schema and Host), if it is not one already. It is
+// resolved using `base` as the base URL.
+func (u *URL) MakeAbsolute(base *URL) {
+	if u.IsAbs() {
+		return
+	}
+	u.URL = base.URL.ResolveReference(u.URL)
+}
+
 // FetchManager configures and runs the crawl.
 //
 // The calling code must create a FetchManager, set a Datastore and handlers,
@@ -326,12 +336,7 @@ func (f *fetcher) start() {
 					log4go.Debug("error parsing HTML for page %v: %v", link, err)
 				} else {
 					for _, outlink := range outlinks {
-						if outlink.Scheme == "" {
-							outlink.Scheme = link.Scheme
-						}
-						if outlink.Host == "" {
-							outlink.Host = link.Host
-						}
+						outlink.MakeAbsolute(link)
 						log4go.Fine("Parsed link: %v", outlink)
 						f.fm.Datastore.StoreParsedURL(outlink, fr)
 					}
