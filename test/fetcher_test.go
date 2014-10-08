@@ -50,6 +50,10 @@ const html_test_links string = `<!DOCTYPE html>
 	<a href="/abs-relative-page/page.html">link</a>
 	<a href="https://other.org/abs-dir/">link</a>
 	<a href="https://other.org/abs-page/page.html">link</a>
+	<a href="javascript:doStuff();">link</a>
+	<a href="ftp:ignoreme.zip;">link</a>
+	<a href="ftP:ignoreme.zip;">link</a>
+	<a href="hTTP:donot/ignore.html">link</a>
 </div>
 </html>`
 
@@ -180,6 +184,7 @@ func TestBasicFetchManagerRun(t *testing.T) {
 			case "http://linktests.com/abs-relative-page/page.html":
 			case "https://other.org/abs-dir/":
 			case "https://other.org/abs-page/page.html":
+			case "http:donot/ignore.html":
 			default:
 				t.Errorf("StoreParsedURL call we didn't expect: %v", u)
 			}
