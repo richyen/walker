@@ -2,6 +2,7 @@
 <html>
 <head>
     <link href="/css/bootstrap.css" rel="stylesheet" type="text/css" />
+    <link href="/css/custom.css" rel="stylesheet" type="text/css" />
     <script src="/js/jquery-2.1.1.js" type="text/javascript"></script>
     <script src="/js/bootstrap.js" type="text/javascript"></script>
     <title>Walker Console</title>
@@ -55,18 +56,22 @@
     </div><!-- /.container-fluid -->
   </nav>
   <div class="container">
-    {{if .HasErrorMessage}}
-      <ul>
-      {{range .ErrorMessage}}
-        <li> {{.}} </li>
+      {{if .HasErrorMessage}}
+        <ul>
+          {{range .ErrorMessage}}
+              <li> {{.}} </li>
+          {{end}}
+        </ul>
       {{end}}
-    {{end}}
 
-    {{if .HasInfoMessage}}
-      {{range .InfoMessage}}
-        <li> {{.}} </li>
+      {{if .HasInfoMessage}}
+        <ul>
+          {{range .InfoMessage}}
+              <li> {{.}} </li>
+          {{end}}
+        </ul>
       {{end}}
-    {{end}}
+
 
     {{ yield }}
 

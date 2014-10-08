@@ -1,0 +1,11 @@
+
+.console-table {
+    border: 3px solid;
+
+
+}
+
+.table-striped > tbody > tr:nth-child(odd) > td,
+.table-striped > tbody > tr:nth-child(odd) > th {
+  background-color: wheat;
+}

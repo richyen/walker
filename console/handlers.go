@@ -16,10 +16,11 @@ import (
 )
 
 var DS DataStore
-
 var zeroTime = time.Time{}
 var zeroUuid = gocql.UUID{}
 var timeFormat = "2006-01-02 15:04:05 -0700"
+
+const PageWindowLength = 15
 
 func yesOnFilledFunc(s string) string {
 	if s == "" {
@@ -153,10 +154,10 @@ func homeHandler(w http.ResponseWriter, req *http.Request) {
 func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	seed := vars["seed"]
-	needPrev := true
+	prevButtonClass := ""
 	if seed == "" {
 		seed = DontSeedDomain
-		needPrev = false
+		prevButtonClass = "disabled"
 	} else {
 		var err error
 		seed, err = url.QueryUnescape(seed)
@@ -173,15 +174,15 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	nextDomain := ""
-	hasNext := false
+	nextButtonClass := "disabled"
 	if len(dinfos) == PageWindowLength {
 		nextDomain = url.QueryEscape(dinfos[len(dinfos)-1].Domain)
-		hasNext = true
+		nextButtonClass = ""
 	}
 	reply(w, "list",
-		"NeedPrev", needPrev,
+		"PrevButtonClass", prevButtonClass,
+		"NextButtonClass", nextButtonClass,
 		"Domains", dinfos,
-		"HasNext", hasNext,
 		"Next", nextDomain)
 }
 
@@ -325,9 +326,11 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	seedUrl := vars["seedUrl"]
 	needHeader := false
 	windowLength := PageWindowLength
+	prevButtonClass := ""
 	if seedUrl == "" {
 		needHeader = true
 		windowLength /= 2
+		prevButtonClass = "disabled"
 	} else {
 		ss, err := decode32(seedUrl)
 		if err != nil {
@@ -344,18 +347,28 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	nextSeedUrl := ""
-	hasNext := false
+	nextButtonClass := "disabled"
 	if len(linfos) == windowLength {
 		nextSeedUrl = encode32(linfos[len(linfos)-1].Url)
-		hasNext = true
+		nextButtonClass = ""
 	}
+
+	var historyLinks []string
+	for _, linfo := range linfos {
+		path := "/historical/" + encode32(linfo.Url)
+		historyLinks = append(historyLinks, path)
+	}
+
 	reply(w, "links",
 		"Dinfo", dinfo,
-		"HeaderPage", needHeader,
+		"HasHeader", needHeader,
 		"HasLinks", len(linfos) > 0,
 		"Linfos", linfos,
-		"HasNext", hasNext,
-		"NextSeedUrl", nextSeedUrl)
+		"NextSeedUrl", nextSeedUrl,
+		"NextButtonClass", nextButtonClass,
+		"PrevButtonClass", prevButtonClass,
+		"HistoryLinks", historyLinks,
+	)
 
 	return
 }

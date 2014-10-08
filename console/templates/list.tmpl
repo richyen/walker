@@ -1,50 +1,35 @@
 
-    <style type="text/css">
+<div style="width: 80%;" class="row">
+    <h2>List of Domains</h2>
 
-      .console-table {
-          border: 3px solid;
+    <table class="console-table table table-striped table-condensed table-bordered">
+        <thead> 
+          <td class="col-xs-5"> Domain </td>
+          <td class="col-xs-1" style="text-align: center;"> LinksTotal </td>
+          <td class="col-xs-1" style="text-align: center;"> LinksQueued </td>
+          <td class="col-xs-2" style="text-align: center;"> Excluded </td>
+          <td class="col-xs-3" style="text-align: center;"> ActiveSince </td>
+        </thead>
+        <tbody>
+        {{range .Domains}}
+            <tr> 
+              <td> <a href="/links/{{.Domain}}"> {{.Domain}} </a> </td>
+              <td style="text-align: center;"> {{.NumberLinksTotal}} </td>
+              <td style="text-align: center;"> {{.NumberLinksQueued}} </td>
+              <td style="text-align: center;"> {{yesOnFilled .ExcludeReason}} </td>
+              <td style="text-align: center;"> {{activeSince .TimeQueued}} </td>
+            </tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
 
-          -webkit-border-radius: 25px;
-          -moz-border-radius: 25px;
-          border-radius: 25px;
+<div style="width: 80%;" class="row">
+    <a href="" class="col-xs-3 btn btn-info btn-large {{.PrevButtonClass}}" onclick="window.history.back()">
+          <i class="icon-white icon-backward"></i> Maybe Previous</a>
 
-          width: 60%;
-          min-width: 200px;
-      }
-    </style>
+    <div class="col-xs-1"></div>
 
-<h2>List of Domains</h2>
-
-<table class="console-table table table-striped table-condensed table-bordered ">
-    <thead> 
-      <td> Domain </td>
-      <td> LinksTotal </td>
-      <td> LinksQueued </td>
-
-      <td> Excluded </td>
-      <td> ActiveSince </td>
-    </thead>
-    <tbody>
-    {{range .Domains}}
-        <tr> 
-          <td> <a href="/links/{{.Domain}}"> {{.Domain}} </a> </td>
-          <td> {{.NumberLinksTotal}} </td>
-          <td> {{.NumberLinksQueued}} </td>
-
-          <td> {{yesOnFilled .ExcludeReason}} </td>
-          <td> {{activeSince .TimeQueued}}
-        </tr>
-    {{end}}
-    </tbody>
-</table>
-
-{{if .NeedPrev}}
-    <a href="" class="btn btn-info btn-large" onclick="window.history.back()" style="width: 200px;"><i class="icon-white icon-backward"></i> Maybe Previous</a>
-    <!-- <a href="" onclick="window.history.back()"> <h3> MaybePrevious </h3> </a> -->
-{{end}}
-{{if .HasNext}}
-    <a href="/list/{{.Next}}" class="btn btn-info btn-large" style="width: 200px;"><i class="icon-white icon-forward"></i> Next </a>
-
-    <!-- <a href="/list/{{.Next}}"> <h3> Next </h3> </a> -->
-{{end}}
-
+    <a href="/list/{{.Next}}" class="col-xs-3 btn btn-info btn-large {{.NextButtonClass}}">
+          <i class="icon-white icon-forward"></i> Next </a>
+</div>
