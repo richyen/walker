@@ -59,7 +59,7 @@
       {{if .HasErrorMessage}}
         <ul>
           {{range .ErrorMessage}}
-              <li> {{.}} </li>
+              <li class="error-li"> {{.}} </li>
           {{end}}
         </ul>
       {{end}}
@@ -67,7 +67,7 @@
       {{if .HasInfoMessage}}
         <ul>
           {{range .InfoMessage}}
-              <li> {{.}} </li>
+              <li class="info-li"> {{.}} </li>
           {{end}}
         </ul>
       {{end}}

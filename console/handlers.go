@@ -42,22 +42,34 @@ func yesOnTrueFunc(q bool) string {
 
 func activeSinceFunc(t time.Time) string {
 	if t == zeroTime {
-		return "-"
+		return ""
 	} else {
 		return t.Format(timeFormat)
 	}
 }
 
 func ftimeFunc(t time.Time) string {
-	if t.Equal(walker.NotYetCrawled) {
+	if t == zeroTime || t.Equal(walker.NotYetCrawled) {
 		return "Not yet crawled"
 	} else {
 		return t.Format(timeFormat)
 	}
 }
 
+func ftime2Func(t time.Time) string {
+	if t == zeroTime || t.Equal(walker.NotYetCrawled) {
+		return ""
+	} else {
+		return t.Format(timeFormat)
+	}
+}
+
 func fuuidFunc(u gocql.UUID) string {
-	return u.String()
+	if u == zeroUuid {
+		return ""
+	} else {
+		return u.String()
+	}
 }
 
 // func statusText(status int) string {
@@ -73,6 +85,7 @@ var renderer = render.New(render.Options{
 			"yesOnFilled": yesOnFilledFunc,
 			"activeSince": activeSinceFunc,
 			"ftime":       ftimeFunc,
+			"ftime2":      ftime2Func,
 			"fuuid":       fuuidFunc,
 			"statusText":  http.StatusText,
 			"yesOnTrue":   yesOnTrueFunc,
@@ -224,38 +237,59 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 			targets = append(targets, t)
 		}
 	}
-	target := targets[0]
-	//XXX: change so that it handles several domains
 
-	if target == "" {
-		reply(w, "find")
+	if len(targets) <= 0 {
+		replyWithInfo(w, "find", fmt.Sprintf("Failed to specify any targets"))
 		return
 	}
 
-	t, err := url.QueryUnescape(target)
-	if err != nil {
-		replyWithError(w, "find", fmt.Sprintf("Failed to decode domain %s", target))
-		return
+	var dinfos []DomainInfo
+	var errs []string
+	var info []string
+	for _, target := range targets {
+		t, err := url.QueryUnescape(target)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("Failed to decode domain %s", target))
+			continue
+		}
+		target = t
+
+		dinfo, err := DS.FindDomain(target)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("FindDomain failed: %v", err))
+			continue
+		}
+
+		if dinfo == nil {
+			info = append(info, fmt.Sprintf("Failed to find domain %s", target))
+			continue
+		}
+
+		dinfos = append(dinfos, *dinfo)
 	}
-	target = t
 
-	dinfo, err := DS.FindDomain(target)
-	if err != nil {
-		err = fmt.Errorf("FindDomain failed: %v", err)
-		replyServerError(w, err)
-		return
+	hasInfoMessage := len(info) > 0
+	hasErrorMessage := len(errs) > 0
+
+	if len(dinfos) == 0 {
+		info = append(info, "Didn't find any links on previous try")
+		hasInfoMessage = true
+		reply(w, "find",
+			"HasInfoMessage", hasInfoMessage,
+			"InfoMessage", info,
+			"HasErrorMessage", hasErrorMessage,
+			"ErrorMessage", errs)
+	} else {
+		reply(w, "list",
+			"PrevButtonClass", "disabled",
+			"NextButtonClass", "disabled",
+			"Domains", dinfos,
+			"HasNext", false,
+			"HasInfoMessage", hasInfoMessage,
+			"InfoMessage", info,
+			"HasErrorMessage", hasErrorMessage,
+			"ErrorMessage", errs)
 	}
-
-	if dinfo == nil {
-		replyWithInfo(w, "find", fmt.Sprintf("Failed to find domain %s", target))
-		return
-	}
-
-	dinfos := []DomainInfo{*dinfo}
-
-	reply(w, "list",
-		"Domains", dinfos,
-		"HasNext", false)
 }
 
 func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
@@ -282,6 +316,10 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 		t := strings.TrimSpace(lines[i])
 		if t == "" {
 			continue
+		}
+
+		if strings.Index(t, "http://") != 0 && strings.Index(t, "https://") != 0 {
+			t = "http://" + t
 		}
 
 		links = append(links, t)
