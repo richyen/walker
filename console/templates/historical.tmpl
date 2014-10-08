@@ -14,8 +14,8 @@
                 {{range .Linfos}}
                     <tr>
                         <td> {{ftime .CrawlTime}} </td>
-                        <td> {{statusText .Status}} </td>
                         <td> {{yesOnTrue .RobotsExcluded}} </td>
+                        <td> {{statusText .Status}} </td>
                         <td> {{.Error}} </td>
                     </tr>
                 {{end}}

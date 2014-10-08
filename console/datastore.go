@@ -412,8 +412,8 @@ type rememberTimes struct {
 	ind int
 }
 
-//collectListInfos populates a []LinkInfo list given a cassandra iterator
-func (ds *CqlDataStore) collectListInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) {
+//collectLinkInfos populates a []LinkInfo list given a cassandra iterator
+func (ds *CqlDataStore) collectLinkInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) {
 	var domain, subdomain, path, protocol, anerror string
 	var crawlTime time.Time
 	var robotsExcluded bool
@@ -522,7 +522,7 @@ func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]L
 	var err error
 	for _, qt := range table {
 		itr := db.Query(qt.query, qt.args...).Iter()
-		linfos, err = ds.collectListInfos(linfos, rtimes, itr, limit)
+		linfos, err = ds.collectLinkInfos(linfos, rtimes, itr, limit)
 		if err != nil {
 			return linfos, err
 		}

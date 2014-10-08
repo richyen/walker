@@ -12,6 +12,7 @@ import (
 	"encoding/base32"
 	"github.com/gocql/gocql"
 	"github.com/gorilla/mux"
+	"github.com/iParadigms/walker"
 	"github.com/unrolled/render"
 )
 
@@ -48,8 +49,8 @@ func activeSinceFunc(t time.Time) string {
 }
 
 func ftimeFunc(t time.Time) string {
-	if t == zeroTime {
-		return ""
+	if t.Equal(walker.NotYetCrawled) {
+		return "Not yet crawled"
 	} else {
 		return t.Format(timeFormat)
 	}
@@ -78,6 +79,17 @@ var renderer = render.New(render.Options{
 		},
 	},
 })
+
+// Some Utilities
+func decode32(s string) (string, error) {
+	b, err := base32.StdEncoding.DecodeString(s)
+	return string(b), err
+}
+
+func encode32(s string) string {
+	b := base32.StdEncoding.EncodeToString([]byte(s))
+	return string(b)
+}
 
 func replyFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
 	if len(keyValues)%2 != 0 {
@@ -143,6 +155,7 @@ func Routes() []Route {
 		Route{Path: "/add/", Handler: addLinkIndexHandler},
 		Route{Path: "/links/{domain}", Handler: linksHandler},
 		Route{Path: "/links/{domain}/{seedUrl}", Handler: linksHandler},
+		Route{Path: "/historical/{url}", Handler: linksHistoricalHandler},
 	}
 }
 
@@ -295,15 +308,6 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 // to be choking on the url-encoded text as well. For example if the url encoded seedUrl ends with
 // .html, it appears that this is causing the server to throw a 301. Unknown why that is. But the net effect
 // is that, if I totally disguise the link in base32, everything works.
-func decode32(s string) (string, error) {
-	b, err := base32.StdEncoding.DecodeString(s)
-	return string(b), err
-}
-
-func encode32(s string) string {
-	b := base32.StdEncoding.EncodeToString([]byte(s))
-	return string(b)
-}
 
 func linksHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
@@ -371,4 +375,30 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	)
 
 	return
+}
+
+func linksHistoricalHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	url := vars["url"]
+	if url == "" {
+		replyServerError(w, fmt.Errorf("linksHistoricalHandler called without url"))
+		return
+	}
+	nurl, err := decode32(url)
+	if err != nil {
+		replyServerError(w, fmt.Errorf("decode32 (%s): %v", url, err))
+		return
+	}
+	url = nurl
+
+	//ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error)
+	linfos, _, err := DS.ListLinkHistorical(url, DontSeedIndex, 500)
+	if err != nil {
+		replyServerError(w, fmt.Errorf("ListLinkHistorical (%s): %v", url, err))
+		return
+	}
+
+	reply(w, "historical",
+		"LinkTopic", url,
+		"Linfos", linfos)
 }
