@@ -338,7 +338,9 @@ func (f *fetcher) start() {
 					for _, outlink := range outlinks {
 						outlink.MakeAbsolute(link)
 						log4go.Fine("Parsed link: %v", outlink)
-						f.fm.Datastore.StoreParsedURL(outlink, fr)
+						if shouldStore(outlink) {
+							f.fm.Datastore.StoreParsedURL(outlink, fr)
+						}
 					}
 				}
 			}
@@ -525,6 +527,17 @@ func isHandleable(r *http.Response, mm *mimetools.Matcher) bool {
 	for _, ct := range r.Header["Content-Type"] {
 		matched, err := mm.Match(ct)
 		if err == nil && matched {
+			return true
+		}
+	}
+	return false
+}
+
+// shouldStore determines if a link should be stored as a parsed link.
+func shouldStore(u *URL) bool {
+	// Could also check extension here, possibly
+	for _, f := range Config.AcceptProtocols {
+		if u.Scheme == f {
 			return true
 		}
 	}
