@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gorilla/mux"
+	"github.com/iParadigms/walker"
 )
 
 type Route struct {
@@ -27,6 +28,7 @@ func Routes() []Route {
 		Route{Path: "/links/{domain}", Handler: linksHandler},
 		Route{Path: "/links/{domain}/{seedUrl}", Handler: linksHandler},
 		Route{Path: "/historical/{url}", Handler: linksHistoricalHandler},
+		Route{Path: "/findLinks", Handler: findLinksHandler},
 	}
 }
 
@@ -103,7 +105,11 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if len(targets) <= 0 {
-		replyWithInfo(w, "find", fmt.Sprintf("Failed to specify any targets"))
+		mp := map[string]interface{}{
+			"HasInfoMessage": true,
+			"InfoMessage":    "Failed to specify any targets",
+		}
+		Render.HTML(w, http.StatusOK, "find", mp)
 		return
 	}
 
@@ -160,6 +166,8 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
+// TODO: I think that we should have a confirm page after you add the links. But thats
+// an advanced feature.
 func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
@@ -179,33 +187,58 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	lines := strings.Split(linksExt[0], "\n")
+	text := linksExt[0]
+	lines := strings.Split(text, "\n")
 	links := make([]string, 0, len(lines))
+	var errs []string
 	for i := range lines {
-		t := strings.TrimSpace(lines[i])
-		if t == "" {
+		u := strings.TrimSpace(lines[i])
+		if u == "" {
 			continue
 		}
 
-		if strings.Index(t, "http://") != 0 && strings.Index(t, "https://") != 0 {
-			t = "http://" + t
+		uc := urlCleanse(u)
+		if uc == "" {
+			errs = append(errs, fmt.Sprintf("Unacceptable scheme for '%v'", u))
+			continue
 		}
+		u = uc
 
-		links = append(links, t)
+		links = append(links, u)
+	}
+
+	if len(errs) > 0 {
+		mp := map[string]interface{}{
+			"HasText":         true,
+			"Text":            text,
+			"HasInfoMessage":  true,
+			"InfoMessage":     []string{"No links added"},
+			"HasErrorMessage": true,
+			"ErrorMessage":    errs,
+		}
+		Render.HTML(w, http.StatusOK, "add", mp)
+		return
 	}
 
 	errList := DS.InsertLinks(links)
 	if len(errList) != 0 {
-		var s []string
-		for _, x := range errList {
-			s = append(s, x.Error())
+		for _, e := range errList {
+			errs = append(errs, e.Error())
 		}
-		replyWithErrorList(w, "add", s)
-		return
-	} else {
-		replyWithInfo(w, "add", "All links added")
+		mp := map[string]interface{}{
+			"HasErrorMessage": true,
+			"ErrorMessage":    errs,
+		}
+		Render.HTML(w, http.StatusOK, "add", mp)
 		return
 	}
+
+	mp := map[string]interface{}{
+		"HasInfoMessage": true,
+		"InfoMessage":    []string{"All links added"},
+	}
+	Render.HTML(w, http.StatusOK, "add", mp)
+	return
 }
 
 //IMPL NOTE: Why does linksHandler encode the seedUrl in base32, rather than URL encode it?
@@ -298,7 +331,6 @@ func linksHistoricalHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	url = nurl
 
-	//ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error)
 	linfos, _, err := DS.ListLinkHistorical(url, DontSeedIndex, 500)
 	if err != nil {
 		replyServerError(w, fmt.Errorf("ListLinkHistorical (%s): %v", url, err))
@@ -310,4 +342,38 @@ func linksHistoricalHandler(w http.ResponseWriter, req *http.Request) {
 		"Linfos":    linfos,
 	}
 	Render.HTML(w, http.StatusOK, "historical", mp)
+}
+
+func findLinksHandler(w http.ResponseWriter, req *http.Request) {
+	if req.Method != "POST" {
+		mp := map[string]interface{}{}
+		Render.HTML(w, http.StatusOK, "findLinks", mp)
+		return
+	}
+
+	mp := map[string]interface{}{}
+	Render.HTML(w, http.StatusOK, "findLinks", mp)
+	return
+}
+
+// UTILITY
+// urlCleanse returns a URL with an acceptable scheme, or the empty string
+// if no acceptable scheme is present. In the event the scheme is not provided,
+// http is assumed. NOTE: There is a similar function in walker proper. When
+// we get to the point of refactoring the data models together, this can be
+// merged.
+func urlCleanse(url string) string {
+	index := strings.LastIndex(url, ":")
+	if index < 0 {
+		return "http://" + url
+	}
+
+	scheme := url[:index]
+	for _, f := range walker.Config.AcceptProtocols {
+		if scheme == f {
+			return url
+		}
+	}
+
+	return ""
 }

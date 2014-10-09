@@ -117,11 +117,12 @@ func replyServerError(w http.ResponseWriter, err error) {
 		"anErrorHappend", true,
 		"theError", err.Error())
 }
-func replyWithInfo(w http.ResponseWriter, template string, message string) {
-	replyFull(w, template, http.StatusOK,
-		"HasInfoMessage", true,
-		"InfoMessage", []string{message})
-}
+
+// func replyWithInfo(w http.ResponseWriter, template string, message string) {
+// 	replyFull(w, template, http.StatusOK,
+// 		"HasInfoMessage", true,
+// 		"InfoMessage", []string{message})
+// }
 
 func replyWithError(w http.ResponseWriter, template string, message string) {
 	log4go.Info("Rendered user error message %v", message)
