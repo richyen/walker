@@ -78,6 +78,9 @@ type DataStore interface {
 
 	// For a given linkUrl, return the entire crawl history
 	ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error)
+
+	// Find a link
+	FindLink(links string) (*LinkInfo, error)
 }
 
 //
@@ -581,6 +584,38 @@ func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedIndex int, limit 
 	err = itr.Close()
 
 	return linfos, seedIndex + len(linfos), err
+}
+
+func (ds *CqlDataStore) FindLink(link string) (*LinkInfo, error) {
+	db := ds.Db
+	u, err := walker.ParseURL(link)
+	if err != nil {
+		return nil, err
+	}
+	query := `SELECT domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded 
+                      FROM links 
+                      WHERE domain = ? AND 
+                            subdomain = ? AND 
+                            path = ? AND 
+                            protocol = ?`
+	itr := db.Query(query, u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme).Iter()
+	rtimes := map[string]rememberTimes{}
+	linfos, err := ds.collectLinkInfos(nil, rtimes, itr, 1)
+	if err != nil {
+		itr.Close()
+		return nil, err
+	}
+
+	err = itr.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(linfos) == 0 {
+		return nil, nil
+	} else {
+		return &linfos[0], nil
+	}
 }
 
 /*

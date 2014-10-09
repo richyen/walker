@@ -46,7 +46,11 @@
 
 {{if .HasLinks}}
     <div class="row" style="width: 90%;">
-        <h2> Links for domain {{.Dinfo.Domain}} </h2>
+        {{if .AltTitle}}
+            <h2> Searched for links </h2>
+        {{else}}
+            <h2> Links for domain {{.Dinfo.Domain}} </h2>
+        {{end}}
         <table class="console-table table table-striped table-condensed table-bordered ">
             <thead>
                 <th class="col-xs-4"> Link </th>
@@ -70,17 +74,19 @@
         </table>
     <div>
 
-    <div style="width: 90%;" class="row">
+    {{if not .DisableButtons}}
+        <div style="width: 90%;" class="row">
 
-        <a href="" class="col-xs-3 btn btn-info btn-large {{.PrevButtonClass}}" onclick="window.history.back()">
-                  <i class="icon-white icon-backward"></i> Previous</a>
+            <a href="" class="col-xs-3 btn btn-info btn-large {{.PrevButtonClass}}" onclick="window.history.back()">
+                      <i class="icon-white icon-backward"></i> Previous</a>
 
-        <div class="col-xs-1"></div>
+            <div class="col-xs-1"></div>
 
-        <a href="/links/{{.Dinfo.Domain}}/{{.NextSeedUrl}}" class="col-xs-3 btn btn-info btn-large {{.NextButtonClass}}">
-                  <i class="icon-white icon-forward"></i> Next </a>
+            <a href="/links/{{.Dinfo.Domain}}/{{.NextSeedUrl}}" class="col-xs-3 btn btn-info btn-large {{.NextButtonClass}}">
+                      <i class="icon-white icon-forward"></i> Next </a>
 
-    </div>
+        </div>
+    {{end}}
 
 {{else}}
     <div class="row">

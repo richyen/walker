@@ -169,9 +169,6 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 // TODO: I think that we should have a confirm page after you add the links. But thats
 // an advanced feature.
 func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
-	replyServerError(w, fmt.Errorf("Chuck: don't let me down"))
-	return
-
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "add", mp)
@@ -186,7 +183,7 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 
 	linksExt, ok := req.Form["links"]
 	if !ok {
-		replyServerError(w, err)
+		replyServerError(w, fmt.Errorf("Corrupt POST message: no links field"))
 		return
 	}
 
@@ -354,8 +351,84 @@ func findLinksHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	mp := map[string]interface{}{}
-	Render.HTML(w, http.StatusOK, "findLinks", mp)
+	err := req.ParseForm()
+	if err != nil {
+		replyServerError(w, err)
+		return
+	}
+
+	linksExt, ok := req.Form["links"]
+	if !ok {
+		replyServerError(w, fmt.Errorf("Corrupt POST message: no links field"))
+		return
+	}
+
+	text := linksExt[0]
+	lines := strings.Split(text, "\n")
+	var info []string
+	var errs []string
+	var linfos []LinkInfo
+	for i := range lines {
+		u := strings.TrimSpace(lines[i])
+		if u == "" {
+			continue
+		}
+
+		uc := urlCleanse(u)
+		if uc == "" {
+			errs = append(errs, fmt.Sprintf("Unacceptable scheme for '%v'", u))
+			continue
+		}
+		u = uc
+
+		linfo, err := DS.FindLink(u)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("FindLinks error: %v", err))
+			continue
+		} else if linfo == nil {
+			info = append(info, fmt.Sprintf("Failed to find link '%v'", u))
+			continue
+		}
+		linfos = append(linfos, *linfo)
+	}
+
+	needErr := len(errs) > 0
+	needInf := len(info) > 0
+
+	if len(linfos) == 0 {
+		info = append(info, "Failed to find any links")
+		mp := map[string]interface{}{
+			"Text":            text,
+			"HasError":        needErr,
+			"HasInfoMessage":  true,
+			"InfoMessage":     info,
+			"HasErrorMessage": needErr,
+			"ErrorMessage":    errs,
+		}
+		Render.HTML(w, http.StatusOK, "findLinks", mp)
+		return
+	}
+
+	var historyLinks []string
+	for _, linfo := range linfos {
+		path := "/historical/" + encode32(linfo.Url)
+		historyLinks = append(historyLinks, path)
+	}
+
+	mp := map[string]interface{}{
+		"HasLinks":       true,
+		"Linfos":         linfos,
+		"DisableButtons": true,
+		"AltTitle":       true,
+		"HistoryLinks":   historyLinks,
+
+		"HasInfoMessage":  needInf,
+		"InfoMessage":     info,
+		"HasErrorMessage": needErr,
+		"ErrorMessage":    errs,
+	}
+
+	Render.HTML(w, http.StatusOK, "links", mp)
 	return
 }
 
