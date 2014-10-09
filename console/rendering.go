@@ -73,7 +73,7 @@ func fuuidFunc(u gocql.UUID) string {
 //  return http.StatusText(status)
 // }
 
-var renderer = render.New(render.Options{
+var Render = render.New(render.Options{
 	Layout:        "layout",
 	IndentJSON:    true,
 	IsDevelopment: true,
@@ -104,12 +104,12 @@ func replyFull(w http.ResponseWriter, template string, status int, keyValues ...
 		value := keyValues[i+1]
 		mp[key] = value
 	}
-	renderer.HTML(w, status, template, mp)
+	Render.HTML(w, status, template, mp)
 }
 
-func reply(w http.ResponseWriter, template string, keyValues ...interface{}) {
-	replyFull(w, template, http.StatusOK, keyValues...)
-}
+// func reply(w http.ResponseWriter, template string, keyValues ...interface{}) {
+// 	replyFull(w, template, http.StatusOK, keyValues...)
+// }
 
 func replyServerError(w http.ResponseWriter, err error) {
 	log4go.Error("Rendering 500: %v", err)

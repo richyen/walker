@@ -31,7 +31,8 @@ func Routes() []Route {
 }
 
 func homeHandler(w http.ResponseWriter, req *http.Request) {
-	reply(w, "home")
+	mp := map[string]interface{}{}
+	Render.HTML(w, http.StatusOK, "home", mp)
 	return
 }
 
@@ -63,16 +64,20 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 		nextDomain = url.QueryEscape(dinfos[len(dinfos)-1].Domain)
 		nextButtonClass = ""
 	}
-	reply(w, "list",
-		"PrevButtonClass", prevButtonClass,
-		"NextButtonClass", nextButtonClass,
-		"Domains", dinfos,
-		"Next", nextDomain)
+
+	mp := map[string]interface{}{
+		"PrevButtonClass": prevButtonClass,
+		"NextButtonClass": nextButtonClass,
+		"Domains":         dinfos,
+		"Next":            nextDomain,
+	}
+	Render.HTML(w, http.StatusOK, "list", mp)
 }
 
 func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		reply(w, "find")
+		mp := map[string]interface{}{}
+		Render.HTML(w, http.StatusOK, "find", mp)
 		return
 	}
 
@@ -83,7 +88,8 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	}
 	targetAll, ok := req.Form["targets"]
 	if !ok {
-		reply(w, "find")
+		mp := map[string]interface{}{}
+		Render.HTML(w, http.StatusOK, "find", mp)
 		return
 	}
 
@@ -132,27 +138,32 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	if len(dinfos) == 0 {
 		info = append(info, "Didn't find any links on previous try")
 		hasInfoMessage = true
-		reply(w, "find",
-			"HasInfoMessage", hasInfoMessage,
-			"InfoMessage", info,
-			"HasErrorMessage", hasErrorMessage,
-			"ErrorMessage", errs)
+		mp := map[string]interface{}{
+			"HasInfoMessage":  hasInfoMessage,
+			"InfoMessage":     info,
+			"HasErrorMessage": hasErrorMessage,
+			"ErrorMessage":    errs,
+		}
+		Render.HTML(w, http.StatusOK, "find", mp)
 	} else {
-		reply(w, "list",
-			"PrevButtonClass", "disabled",
-			"NextButtonClass", "disabled",
-			"Domains", dinfos,
-			"HasNext", false,
-			"HasInfoMessage", hasInfoMessage,
-			"InfoMessage", info,
-			"HasErrorMessage", hasErrorMessage,
-			"ErrorMessage", errs)
+		mp := map[string]interface{}{
+			"PrevButtonClass": "disabled",
+			"NextButtonClass": "disabled",
+			"Domains":         dinfos,
+			"HasNext":         false,
+			"HasInfoMessage":  hasInfoMessage,
+			"InfoMessage":     info,
+			"HasErrorMessage": hasErrorMessage,
+			"ErrorMessage":    errs,
+		}
+		Render.HTML(w, http.StatusOK, "list", mp)
 	}
 }
 
 func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
-		reply(w, "add")
+		mp := map[string]interface{}{}
+		Render.HTML(w, http.StatusOK, "add", mp)
 		return
 	}
 
@@ -259,17 +270,17 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 		historyLinks = append(historyLinks, path)
 	}
 
-	reply(w, "links",
-		"Dinfo", dinfo,
-		"HasHeader", needHeader,
-		"HasLinks", len(linfos) > 0,
-		"Linfos", linfos,
-		"NextSeedUrl", nextSeedUrl,
-		"NextButtonClass", nextButtonClass,
-		"PrevButtonClass", prevButtonClass,
-		"HistoryLinks", historyLinks,
-	)
-
+	mp := map[string]interface{}{
+		"Dinfo":           dinfo,
+		"HasHeader":       needHeader,
+		"HasLinks":        len(linfos) > 0,
+		"Linfos":          linfos,
+		"NextSeedUrl":     nextSeedUrl,
+		"NextButtonClass": nextButtonClass,
+		"PrevButtonClass": prevButtonClass,
+		"HistoryLinks":    historyLinks,
+	}
+	Render.HTML(w, http.StatusOK, "links", mp)
 	return
 }
 
@@ -294,7 +305,9 @@ func linksHistoricalHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	reply(w, "historical",
-		"LinkTopic", url,
-		"Linfos", linfos)
+	mp := map[string]interface{}{
+		"LinkTopic": url,
+		"Linfos":    linfos,
+	}
+	Render.HTML(w, http.StatusOK, "historical", mp)
 }
