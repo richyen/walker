@@ -259,7 +259,7 @@ func main() {
 	routes := console.Routes()
 	for _, route := range routes {
 		log4go.Info("Registering path %s", route.Path)
-		router.HandleFunc(route.Path, route.Handler)
+		router.HandleFunc(route.Path, route.Controller)
 	}
 
 	n := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.NewStatic(http.Dir("public")))

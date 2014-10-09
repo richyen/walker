@@ -11,34 +11,34 @@ import (
 )
 
 type Route struct {
-	Path    string
-	Handler func(w http.ResponseWriter, req *http.Request)
+	Path       string
+	Controller func(w http.ResponseWriter, req *http.Request)
 }
 
 func Routes() []Route {
 	return []Route{
-		Route{Path: "/", Handler: homeHandler},
-		Route{Path: "/list", Handler: listDomainsHandler},
-		Route{Path: "/list/", Handler: listDomainsHandler},
-		Route{Path: "/list/{seed}", Handler: listDomainsHandler},
-		Route{Path: "/find", Handler: findDomainHandler},
-		Route{Path: "/find/", Handler: findDomainHandler},
-		Route{Path: "/add", Handler: addLinkIndexHandler},
-		Route{Path: "/add/", Handler: addLinkIndexHandler},
-		Route{Path: "/links/{domain}", Handler: linksHandler},
-		Route{Path: "/links/{domain}/{seedUrl}", Handler: linksHandler},
-		Route{Path: "/historical/{url}", Handler: linksHistoricalHandler},
-		Route{Path: "/findLinks", Handler: findLinksHandler},
+		Route{Path: "/", Controller: homeController},
+		Route{Path: "/list", Controller: listDomainsController},
+		Route{Path: "/list/", Controller: listDomainsController},
+		Route{Path: "/list/{seed}", Controller: listDomainsController},
+		Route{Path: "/find", Controller: findDomainController},
+		Route{Path: "/find/", Controller: findDomainController},
+		Route{Path: "/add", Controller: addLinkIndexController},
+		Route{Path: "/add/", Controller: addLinkIndexController},
+		Route{Path: "/links/{domain}", Controller: linksController},
+		Route{Path: "/links/{domain}/{seedUrl}", Controller: linksController},
+		Route{Path: "/historical/{url}", Controller: linksHistoricalController},
+		Route{Path: "/findLinks", Controller: findLinksController},
 	}
 }
 
-func homeHandler(w http.ResponseWriter, req *http.Request) {
+func homeController(w http.ResponseWriter, req *http.Request) {
 	mp := map[string]interface{}{}
 	Render.HTML(w, http.StatusOK, "home", mp)
 	return
 }
 
-func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
+func listDomainsController(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	seed := vars["seed"]
 	prevButtonClass := ""
@@ -76,7 +76,7 @@ func listDomainsHandler(w http.ResponseWriter, req *http.Request) {
 	Render.HTML(w, http.StatusOK, "list", mp)
 }
 
-func findDomainHandler(w http.ResponseWriter, req *http.Request) {
+func findDomainController(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "find", mp)
@@ -168,7 +168,7 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 
 // TODO: I think that we should have a confirm page after you add the links. But thats
 // an advanced feature.
-func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
+func addLinkIndexController(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "add", mp)
@@ -241,7 +241,7 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
-//IMPL NOTE: Why does linksHandler encode the seedUrl in base32, rather than URL encode it?
+//IMPL NOTE: Why does linksController encode the seedUrl in base32, rather than URL encode it?
 // The reason is that various components along the way are tripping on the appearance of the
 // seedUrl argument. First, it appears that the browser is unencoding the link BEFORE submitting it
 // to the server. That looks like a problem with the browser to me. But in addition, the server appears
@@ -249,11 +249,11 @@ func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
 // .html, it appears that this is causing the server to throw a 301. Unknown why that is. But the net effect
 // is that, if I totally disguise the link in base32, everything works.
 
-func linksHandler(w http.ResponseWriter, req *http.Request) {
+func linksController(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	domain := vars["domain"]
 	if domain == "" {
-		replyServerError(w, fmt.Errorf("User failed to specify domain for linksHandler"))
+		replyServerError(w, fmt.Errorf("User failed to specify domain for linksController"))
 		return
 	}
 	dinfo, err := DS.FindDomain(domain)
@@ -263,7 +263,7 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if dinfo == nil {
-		replyServerError(w, fmt.Errorf("User failed to specify domain for linksHandler"))
+		replyServerError(w, fmt.Errorf("User failed to specify domain for linksController"))
 		return
 	}
 
@@ -317,11 +317,11 @@ func linksHandler(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
-func linksHistoricalHandler(w http.ResponseWriter, req *http.Request) {
+func linksHistoricalController(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	url := vars["url"]
 	if url == "" {
-		replyServerError(w, fmt.Errorf("linksHistoricalHandler called without url"))
+		replyServerError(w, fmt.Errorf("linksHistoricalController called without url"))
 		return
 	}
 	nurl, err := decode32(url)
@@ -344,7 +344,7 @@ func linksHistoricalHandler(w http.ResponseWriter, req *http.Request) {
 	Render.HTML(w, http.StatusOK, "historical", mp)
 }
 
-func findLinksHandler(w http.ResponseWriter, req *http.Request) {
+func findLinksController(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "findLinks", mp)
