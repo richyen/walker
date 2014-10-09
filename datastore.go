@@ -108,8 +108,8 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 		//TODO: when using priorities: `WHERE priority = ?`
 		domain_iter := ds.db.Query(`SELECT dom FROM domain_info
 									WHERE claim_tok = 00000000-0000-0000-0000-000000000000
-									LIMIT 50`).Iter()
-		defer domain_iter.Close()
+									AND dispatched = true
+									LIMIT 50 ALLOW FILTERING`).Iter()
 		for domain_iter.Scan(&domain) {
 			//TODO: use lightweight transaction to allow more crawlers
 			//TODO: use a per-crawler uuid
@@ -125,6 +125,10 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 				log4go.Debug("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
 				ds.domains = append(ds.domains, domain)
 			}
+		}
+		err := domain_iter.Close()
+		if err != nil {
+			log4go.Error("Domain iteration query failed: %v", err)
 		}
 	}
 

@@ -196,13 +196,15 @@ func TestDatastoreBasic(t *testing.T) {
 		t.Errorf("Expected links from unclaimed domain to be deleted, found %v", count)
 	}
 
-	var dispatched bool
-	err := db.Query(`SELECT dispatched FROM domain_info
-					WHERE dom = 'test.com'`).Scan(&dispatched)
+	err := db.Query(`SELECT COUNT(*) FROM domain_info
+						WHERE dom = 'test.com'
+						AND claim_tok = 00000000-0000-0000-0000-000000000000
+						AND dispatched = false ALLOW FILTERING`).Scan(&count)
 	if err != nil {
-		t.Errorf("Error selecting test.com from domain_info: %v", err)
-	} else if dispatched == true {
-		t.Errorf("Expected test.com in domain_info to be dispatched=false")
+		t.Fatalf("Failed to query for test.com in domain_info: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("test.com has incorrect values in domain_info after unclaim")
 	}
 }
 
@@ -234,7 +236,7 @@ func TestNewDomainAdditions(t *testing.T) {
 		t.Fatalf("Failed to query for test.com in domain_info: %v", err)
 	}
 	if count != 1 {
-		t.Fatalf("Failed to find test.com in domain_info (possibly incorrect field values)")
+		t.Fatalf("test.com not added to domain_info (possibly incorrect field values)")
 	}
 
 	db.Query(`DELETE FROM domain_info WHERE dom = 'test.com'`).Exec()
