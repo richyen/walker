@@ -86,7 +86,7 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 	err := req.ParseForm()
 	if err != nil {
 		replyServerError(w, err)
-
+		return
 	}
 	targetAll, ok := req.Form["targets"]
 	if !ok {
@@ -169,6 +169,9 @@ func findDomainHandler(w http.ResponseWriter, req *http.Request) {
 // TODO: I think that we should have a confirm page after you add the links. But thats
 // an advanced feature.
 func addLinkIndexHandler(w http.ResponseWriter, req *http.Request) {
+	replyServerError(w, fmt.Errorf("Chuck: don't let me down"))
+	return
+
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "add", mp)
