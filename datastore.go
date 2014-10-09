@@ -251,7 +251,8 @@ func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 		return // with error, assume we already have it and move on
 	}
 	if count == 0 {
-		err := ds.db.Query(`INSERT INTO domain_info (dom) VALUES (?)`, domain).Exec()
+		err := ds.db.Query(`INSERT INTO domain_info (dom, claim_tok, dispatched, priority)
+							VALUES (?, ?, ?, ?)`, domain, gocql.UUID{}, false, 0).Exec()
 		if err != nil {
 			log4go.Error("Failed to add new domain %v: %v", domain, err)
 		}

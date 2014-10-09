@@ -225,9 +225,16 @@ func TestNewDomainAdditions(t *testing.T) {
 	walker.Config.AddNewDomains = true
 	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
 
-	db.Query(`SELECT COUNT(*) FROM domain_info WHERE dom = 'test.com'`).Scan(&count)
+	err := db.Query(`SELECT COUNT(*) FROM domain_info
+						WHERE dom = 'test.com'
+						AND claim_tok = 00000000-0000-0000-0000-000000000000
+						AND dispatched = false
+						AND priority = 0 ALLOW FILTERING`).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query for test.com in domain_info: %v", err)
+	}
 	if count != 1 {
-		t.Error("Expected test.com to be added to domain_info")
+		t.Fatalf("Failed to find test.com in domain_info (possibly incorrect field values)")
 	}
 
 	db.Query(`DELETE FROM domain_info WHERE dom = 'test.com'`).Exec()
