@@ -16,14 +16,15 @@ import (
 func TestDispatcherBasic(t *testing.T) {
 	db := getDB(t)
 
-	insertDomainInfo := `INSERT INTO domain_info (domain) VALUES (?)`
-	insertLinkStatus := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status)
+	insertDomainInfo := `INSERT INTO domain_info (dom, claim_tok, priority, dispatched)
+							VALUES (?, ?, ?, ?)`
+	insertLinkStatus := `INSERT INTO links (dom, subdom, path, proto, time, stat)
 							VALUES (?, ?, ?, ?, ?, ?)`
-	insertLink := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
+	insertLink := `INSERT INTO links (dom, subdom, path, proto, time)
 						VALUES (?, ?, ?, ?, ?)`
 
 	queries := []*gocql.Query{
-		db.Query(insertDomainInfo, "test.com"),
+		db.Query(insertDomainInfo, "test.com", gocql.UUID{}, 0, true),
 		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.NotYetCrawled),
 		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.NotYetCrawled),
 		db.Query(insertLink, "test.com", "", "page404.html", "http", walker.NotYetCrawled),
@@ -54,8 +55,8 @@ func TestDispatcherBasic(t *testing.T) {
 		*url2.URL: true,
 	}
 	results := map[url.URL]bool{}
-	iter := db.Query(`SELECT domain, subdomain, path, protocol
-						FROM segments WHERE domain = 'test.com'`).Iter()
+	iter := db.Query(`SELECT dom, subdom, path, proto
+						FROM segments WHERE dom = 'test.com'`).Iter()
 	var linkdomain, subdomain, path, protocol string
 	for iter.Scan(&linkdomain, &subdomain, &path, &protocol) {
 		u, _ := walker.CreateURL(linkdomain, subdomain, path, protocol, walker.NotYetCrawled)
