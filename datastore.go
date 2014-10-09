@@ -304,6 +304,10 @@ func CreateCassandraSchema() error {
 	}
 
 	for _, q := range strings.Split(schema, ";") {
+		q = strings.TrimSpace(q)
+		if q == "" {
+			continue
+		}
 		err = db.Query(q).Exec()
 		if err != nil {
 			return fmt.Errorf("Failed to create schema: %v\nStatement:\n%v", err, q)
@@ -443,4 +447,4 @@ CREATE TABLE {{.Keyspace}}.domain_info (
 ) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
 CREATE INDEX ON {{.Keyspace}}.domain_info (claim_tok);
 CREATE INDEX ON {{.Keyspace}}.domain_info (priority);
-CREATE INDEX ON {{.Keyspace}}.domain_info (dispatched)`
+CREATE INDEX ON {{.Keyspace}}.domain_info (dispatched);`
