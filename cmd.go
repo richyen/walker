@@ -43,6 +43,7 @@ var Cmd struct {
 
 func fatalf(format string, args ...interface{}) {
 	fmt.Printf(format, args...)
+	fmt.Println()
 	os.Exit(1)
 }
 
@@ -207,6 +208,40 @@ crawl, regardless of the add_new_domains configuration setting.`,
 	}
 	seedCommand.Flags().StringVarP(&seedURL, "url", "u", "", "URL to add as a seed")
 	walkerCommand.AddCommand(seedCommand)
+
+	var outfile string
+	schemaCommand := &cobra.Command{
+		Use:   "schema",
+		Short: "output the walker schema",
+		Long: `Schema prints the walker schema to stdout, substituting
+schema-relevant configuration items (ex. keyspace, replication factor).
+Useful for something like:
+	$ <edit walker.yaml as desired>
+	$ walker schema > schema.cql
+	$ <edit schema.cql further as desired>
+	$ cqlsh -f schema.cql
+`,
+		Run: func(cmd *cobra.Command, args []string) {
+			readConfig()
+			if outfile == "" {
+				fatalf("An output file is needed to execute; add with --out/-o")
+			}
+
+			out, err := os.Create(outfile)
+			if err != nil {
+				panic(err.Error())
+			}
+			defer out.Close()
+
+			schema, err := GetCassandraSchema()
+			if err != nil {
+				panic(err.Error())
+			}
+			fmt.Fprint(out, schema)
+		},
+	}
+	schemaCommand.Flags().StringVarP(&outfile, "out", "o", "", "File to write output to")
+	walkerCommand.AddCommand(schemaCommand)
 
 	Cmd.Command = walkerCommand
 }

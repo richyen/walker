@@ -298,20 +298,28 @@ func CreateCassandraSchema() error {
 		}
 	}
 
-	t, err := template.New("schema").Parse(schemaTemplate)
+	schema, err := GetCassandraSchema()
 	if err != nil {
-		return fmt.Errorf("Failure parsing the CQL schema template: %v", err)
+		return err
 	}
-	var b bytes.Buffer
-	t.Execute(&b, Config.Cassandra)
 
-	for _, q := range strings.Split(b.String(), ";") {
+	for _, q := range strings.Split(schema, ";") {
 		err = db.Query(q).Exec()
 		if err != nil {
 			return fmt.Errorf("Failed to create schema: %v\nStatement:\n%v", err, q)
 		}
 	}
 	return nil
+}
+
+func GetCassandraSchema() (string, error) {
+	t, err := template.New("schema").Parse(schemaTemplate)
+	if err != nil {
+		return "", fmt.Errorf("Failure parsing the CQL schema template: %v", err)
+	}
+	var b bytes.Buffer
+	t.Execute(&b, Config.Cassandra)
+	return b.String(), nil
 }
 
 const schemaTemplate string = `-- The schema file for walker
