@@ -181,9 +181,16 @@ type dbfield struct {
 }
 
 func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
+	dom, subdom, err := fr.URL.TLDPlusOneAndSubdomain()
+	if err != nil {
+		// Since the link is in our system this should not happen...
+		// consider storing this error in the links table
+		log4go.Error("StoreURLFetchResults not storing %v: %v", fr.URL, err)
+		return
+	}
 	inserts := []dbfield{
-		dbfield{"dom", fr.URL.ToplevelDomainPlusOne()},
-		dbfield{"subdom", fr.URL.Subdomain()},
+		dbfield{"dom", dom},
+		dbfield{"subdom", subdom},
 		dbfield{"path", fr.URL.RequestURI()},
 		dbfield{"proto", fr.URL.Scheme},
 		dbfield{"time", fr.FetchTime},
@@ -215,7 +222,7 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		values = append(values, f.value)
 		placeholders = append(placeholders, "?")
 	}
-	err := ds.db.Query(
+	err = ds.db.Query(
 		fmt.Sprintf(`INSERT INTO links (%s) VALUES (%s)`,
 			strings.Join(names, ", "), strings.Join(placeholders, ", ")),
 		values...,
@@ -226,17 +233,23 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 }
 
 func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
-	if u.Host == "" {
-		log4go.Warn("Not handling link because there is no host: %v", *u)
+	if !u.IsAbs() {
+		log4go.Warn("Link should not have made it to StoreParsedURL: %v", u)
 		return
 	}
-	domain := u.ToplevelDomainPlusOne()
-	if Config.AddNewDomains {
-		ds.addDomainIfNew(domain)
+	dom, subdom, err := u.TLDPlusOneAndSubdomain()
+	if err != nil {
+		log4go.Debug("StoreParsedURL not storing %v: %v", fr.URL, err)
+		return
 	}
-	err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
+
+	if Config.AddNewDomains {
+		ds.addDomainIfNew(dom)
+	}
+	log4go.Fine("Inserting parsed URL: %v", u)
+	err = ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
 						VALUES (?, ?, ?, ?, ?)`,
-		domain, u.Subdomain(), u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
+		dom, subdom, u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
 	if err != nil {
 		log4go.Error("failed inserting parsed url (%v) to cassandra, %v", u, err)
 	}

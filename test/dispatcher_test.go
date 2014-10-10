@@ -24,7 +24,7 @@ func TestDispatcherBasic(t *testing.T) {
 						VALUES (?, ?, ?, ?, ?)`
 
 	queries := []*gocql.Query{
-		db.Query(insertDomainInfo, "test.com", gocql.UUID{}, 0, true),
+		db.Query(insertDomainInfo, "test.com", gocql.UUID{}, 0, false),
 		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.NotYetCrawled),
 		db.Query(insertLink, "test.com", "", "page2.html", "http", walker.NotYetCrawled),
 		db.Query(insertLink, "test.com", "", "page404.html", "http", walker.NotYetCrawled),
