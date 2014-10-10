@@ -14,6 +14,7 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/gocql/gocql"
+	"github.com/gorilla/mux"
 	"github.com/iParadigms/walker"
 	"github.com/iParadigms/walker/console"
 )
@@ -282,7 +283,7 @@ func newDoc(html string) *goquery.Document {
 	return doc
 }
 
-func callController(url string, body string, controller func(w http.ResponseWriter, req *http.Request)) (*goquery.Document, string, int) {
+func callController(url string, body string, urlPattern string, controller func(w http.ResponseWriter, req *http.Request)) (*goquery.Document, string, int) {
 	var bodyBuff io.Reader = nil
 	method := "GET"
 	if body != "" {
@@ -294,8 +295,11 @@ func callController(url string, body string, controller func(w http.ResponseWrit
 		panic(err)
 	}
 
+	// Need to build a router to get the Gorrilla mux Vars correct
+	router := mux.NewRouter()
+	router.HandleFunc(urlPattern, controller)
 	w := httptest.NewRecorder()
-	controller(w, req)
+	router.ServeHTTP(w, req)
 	status := w.Code
 	output := w.Body.String()
 
@@ -310,7 +314,7 @@ func callController(url string, body string, controller func(w http.ResponseWrit
 
 func TestLayout(t *testing.T) {
 	spoofData()
-	doc, body, status := callController("localhost:3000", "", console.HomeController)
+	doc, body, status := callController("http://localhost:3000/", "", "/", console.HomeController)
 	if status != http.StatusOK {
 		t.Errorf("TestHome bad status code got %d, expected %d", status, http.StatusOK)
 		t.Log(body)
@@ -397,7 +401,7 @@ func TestLayout(t *testing.T) {
 
 func TestHome(t *testing.T) {
 	spoofData()
-	doc, body, status := callController("localhost:3000", "", console.HomeController)
+	doc, body, status := callController("http://localhost:3000/", "", "/", console.HomeController)
 	if status != http.StatusOK {
 		t.Errorf("TestHome bad status code got %d, expected %d", status, http.StatusOK)
 		t.Log(body)
@@ -418,7 +422,7 @@ func TestHome(t *testing.T) {
 
 func TestListDomains(t *testing.T) {
 	spoofData()
-	doc, body, status := callController("localhost:3000/list", "", console.ListDomainsController)
+	doc, body, status := callController("http://localhost:3000/list", "", "/list", console.ListDomainsController)
 	if status != http.StatusOK {
 		t.Errorf("TestListDomains bad status code got %d, expected %d", status, http.StatusOK)
 		body = ""
@@ -475,3 +479,33 @@ func TestListDomains(t *testing.T) {
 		t.Errorf("[.container table tbody tr td a] Had less than %d elements", minCount)
 	}
 }
+
+// func TestListLinks(t *testing.T) {
+// 	spoofData()
+// 	doc, body, status := callController("localhost:3000/links/t1.com", "", console.LinksController)
+// 	if status != http.StatusOK {
+// 		t.Errorf("TestListLinks bad status code got %d, expected %d", status, http.StatusOK)
+// 		//body = ""
+// 		t.Log(body)
+// 		t.Fail()
+// 	}
+
+// 	h2 := []string{
+// 		"Domain information for t1.com",
+// 		"Links for domain t1.com",
+// 	}
+// 	failed := false
+// 	doc.Find(".container h2").Each(func(index int, sel *goquery.Selection) {
+// 		if failed {
+// 			return
+// 		}
+
+// 		text := strings.TrimSpace(sel.Text())
+// 		if text != h2[0] {
+// 			t.Errorf("[.container h2] Failed got '%s', expected '%s'", text, h2[0])
+// 			failed = true
+// 		}
+
+// 		h2 = h2[1:]
+// 	})
+// }
