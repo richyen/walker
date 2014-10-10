@@ -1,7 +1,9 @@
 package test
 
 import (
+	"io/ioutil"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -163,4 +165,20 @@ func TestSeedCommand(t *testing.T) {
 	walker.Cmd.Execute()
 
 	datastore.AssertExpectations(t)
+}
+
+func TestSchemaCommand(t *testing.T) {
+	orig := os.Args
+	defer func() { os.Args = orig }()
+	os.Args = []string{os.Args[0], "schema", "--out=test.cql"}
+	walker.Cmd.Execute()
+	defer os.Remove("test.cql")
+
+	f, err := ioutil.ReadFile("test.cql")
+	if err != nil {
+		t.Fatalf("Failed to read test.cql: %v", err)
+	}
+	if !strings.HasPrefix(string(f), "-- The schema file for walker") {
+		t.Fatalf("test.cql has unexpected contents: %v", f)
+	}
 }

@@ -88,10 +88,8 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 
 func (ds *CassandraDatastore) ClaimNewHost() string {
 
-	// Get our range of priority values and sort high to low
-	// Currently simplified to one level
-	priorities := []int{0}
-
+	// Get our range of priority values, sort high to low and select starting
+	// with the highest priority
 	//priorities := []int{}
 	//var p int
 	//priority_iter := ds.db.Query(`SELECT DISTINCT priority FROM domains_to_crawl`).Iter()
@@ -105,32 +103,32 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 	defer ds.mu.Unlock()
 
 	if len(ds.domains) == 0 {
-		// Start with the highest priority selecting until we find an unclaimed domain segment,
-		// then claim it
 		start := time.Now()
 		var domain string
-		for _, p := range priorities {
-			domain_iter := ds.db.Query(`SELECT domain FROM domains_to_crawl
-										WHERE priority = ?
-										AND crawler_token = 00000000-0000-0000-0000-000000000000
-										LIMIT 50`, p).Iter()
-			defer domain_iter.Close()
-			for domain_iter.Scan(&domain) {
-				//TODO: use lightweight transaction to allow more crawlers
-				//TODO: use a per-crawler uuid
-				log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
-				start = time.Now()
-				crawluuid, _ := gocql.RandomUUID()
-				err := ds.db.Query(`UPDATE domains_to_crawl SET crawler_token = ?, claim_time = ?
-									WHERE priority = ? AND domain = ?`,
-					crawluuid, time.Now(), p, domain).Exec()
-				if err != nil {
-					log4go.Error("Failed to claim segment %v: %v", domain, err)
-				} else {
-					log4go.Debug("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
-					ds.domains = append(ds.domains, domain)
-				}
+		//TODO: when using priorities: `WHERE priority = ?`
+		domain_iter := ds.db.Query(`SELECT dom FROM domain_info
+									WHERE claim_tok = 00000000-0000-0000-0000-000000000000
+									AND dispatched = true
+									LIMIT 50 ALLOW FILTERING`).Iter()
+		for domain_iter.Scan(&domain) {
+			//TODO: use lightweight transaction to allow more crawlers
+			//TODO: use a per-crawler uuid
+			log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
+			start = time.Now()
+			crawluuid, _ := gocql.RandomUUID()
+			err := ds.db.Query(`UPDATE domain_info SET claim_tok = ?, claim_time = ?
+								WHERE dom = ?`,
+				crawluuid, time.Now(), domain).Exec()
+			if err != nil {
+				log4go.Error("Failed to claim segment %v: %v", domain, err)
+			} else {
+				log4go.Debug("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
+				ds.domains = append(ds.domains, domain)
 			}
+		}
+		err := domain_iter.Close()
+		if err != nil {
+			log4go.Error("Domain iteration query failed: %v", err)
 		}
 	}
 
@@ -146,21 +144,14 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 }
 
 func (ds *CassandraDatastore) UnclaimHost(host string) {
-	err := ds.db.Query(`DELETE FROM segments WHERE domain = ?`, host).Exec()
+	err := ds.db.Query(`DELETE FROM segments WHERE dom = ?`, host).Exec()
 	if err != nil {
 		log4go.Error("Failed deleting segment links for %v: %v", host, err)
 	}
 
-	// Since (priority, domain) is the primary key we need to select the priority
-	// first in order to delete. https://issues.apache.org/jira/browse/CASSANDRA-5527
-	var priority int
-	err = ds.db.Query(`SELECT priority FROM domains_to_crawl WHERE domain = ?`, host).Scan(&priority)
-	if err != nil {
-		log4go.Error("Failed getting priority for %v: %v", host, err)
-		return
-	}
-	err = ds.db.Query(`DELETE FROM domains_to_crawl WHERE priority = ? AND domain = ?`,
-		priority, host).Exec()
+	err = ds.db.Query(`UPDATE domain_info SET dispatched = false,
+							claim_tok = 00000000-0000-0000-0000-000000000000
+						WHERE dom = ?`, host).Exec()
 	if err != nil {
 		log4go.Error("Failed deleting %v from domains_to_crawl: %v", host, err)
 	}
@@ -191,23 +182,23 @@ type dbfield struct {
 
 func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 	inserts := []dbfield{
-		dbfield{"domain", fr.URL.ToplevelDomainPlusOne()},
-		dbfield{"subdomain", fr.URL.Subdomain()},
+		dbfield{"dom", fr.URL.ToplevelDomainPlusOne()},
+		dbfield{"subdom", fr.URL.Subdomain()},
 		dbfield{"path", fr.URL.RequestURI()},
-		dbfield{"protocol", fr.URL.Scheme},
-		dbfield{"crawl_time", fr.FetchTime},
+		dbfield{"proto", fr.URL.Scheme},
+		dbfield{"time", fr.FetchTime},
 	}
 
 	if fr.FetchError != nil {
-		inserts = append(inserts, dbfield{"error", fr.FetchError.Error()})
+		inserts = append(inserts, dbfield{"err", fr.FetchError.Error()})
 	}
 
 	if fr.ExcludedByRobots {
-		inserts = append(inserts, dbfield{"robots_excluded", true})
+		inserts = append(inserts, dbfield{"robot_ex", true})
 	}
 
 	if fr.Response != nil {
-		inserts = append(inserts, dbfield{"status", fr.Response.StatusCode})
+		inserts = append(inserts, dbfield{"stat", fr.Response.StatusCode})
 	}
 
 	//TODO: redirectURL, _ := fr.Res.Location()
@@ -243,7 +234,7 @@ func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
 	if Config.AddNewDomains {
 		ds.addDomainIfNew(domain)
 	}
-	err := ds.db.Query(`INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
+	err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
 						VALUES (?, ?, ?, ?, ?)`,
 		domain, u.Subdomain(), u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
 	if err != nil {
@@ -258,13 +249,14 @@ func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 		return
 	}
 	var count int
-	err := ds.db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = ?`, domain).Scan(&count)
+	err := ds.db.Query(`SELECT COUNT(*) FROM domain_info WHERE dom = ?`, domain).Scan(&count)
 	if err != nil {
 		log4go.Error("Failed to check if %v is in domain_info: %v", domain, err)
 		return // with error, assume we already have it and move on
 	}
 	if count == 0 {
-		err := ds.db.Query(`INSERT INTO domain_info (domain) VALUES (?)`, domain).Exec()
+		err := ds.db.Query(`INSERT INTO domain_info (dom, claim_tok, dispatched, priority)
+							VALUES (?, ?, ?, ?)`, domain, gocql.UUID{}, false, 0).Exec()
 		if err != nil {
 			log4go.Error("Failed to add new domain %v: %v", domain, err)
 		}
@@ -273,8 +265,8 @@ func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 }
 
 func (ds *CassandraDatastore) getSegmentLinks(domain string) (links []*URL, err error) {
-	q := ds.db.Query(`SELECT domain, subdomain, path, protocol, crawl_time
-						FROM segments WHERE domain = ?`, domain)
+	q := ds.db.Query(`SELECT dom, subdom, path, proto, time
+						FROM segments WHERE dom = ?`, domain)
 	iter := q.Iter()
 	defer func() { err = iter.Close() }()
 
@@ -311,20 +303,32 @@ func CreateCassandraSchema() error {
 		}
 	}
 
-	t, err := template.New("schema").Parse(schemaTemplate)
+	schema, err := GetCassandraSchema()
 	if err != nil {
-		return fmt.Errorf("Failure parsing the CQL schema template: %v", err)
+		return err
 	}
-	var b bytes.Buffer
-	t.Execute(&b, Config.Cassandra)
 
-	for _, q := range strings.Split(b.String(), ";") {
+	for _, q := range strings.Split(schema, ";") {
+		q = strings.TrimSpace(q)
+		if q == "" {
+			continue
+		}
 		err = db.Query(q).Exec()
 		if err != nil {
 			return fmt.Errorf("Failed to create schema: %v\nStatement:\n%v", err, q)
 		}
 	}
 	return nil
+}
+
+func GetCassandraSchema() (string, error) {
+	t, err := template.New("schema").Parse(schemaTemplate)
+	if err != nil {
+		return "", fmt.Errorf("Failure parsing the CQL schema template: %v", err)
+	}
+	var b bytes.Buffer
+	t.Execute(&b, Config.Cassandra)
+	return b.String(), nil
 }
 
 const schemaTemplate string = `-- The schema file for walker
@@ -334,53 +338,118 @@ const schemaTemplate string = `-- The schema file for walker
 CREATE KEYSPACE {{.Keyspace}}
 WITH REPLICATION = { 'class': 'SimpleStrategy', 'replication_factor': {{.ReplicationFactor}} };
 
+-- links stores all links we have parsed out of pages and crawled.
+--
+-- Links found in a page (or inserted with other means) that have not been
+-- crawled yet have 'time' set to the epoch (Jan 1 1970). Because 'time' is
+-- part of the primary key, Cassandra will deduplicate identical parsed links.
+--
+-- Every time a link is crawled the results are inserted here. Note that the
+-- initial link (with time=epoch) is not overwritten. Rather, for every link,
+-- this table contains one row for the initial insert and one for each fetch
+-- thereafter. We can effectively see our crawl history for every single link.
 CREATE TABLE {{.Keyspace}}.links (
-  domain text, -- "google.com"
-  subdomain text, --  "www" (does not include .)
-  path text, -- "/index.hml"
-  protocol text, -- "http"
-  crawl_time timestamp, -- 0/epoch indicates initial insert (not yet fetched)
-  --port int,
+	-- top-level domain plus one component, ex. "google.com"
+	dom text,
 
-  status int,
-  error text,
-  fp bigint,
-  referer text,
-  redirect_url text,
-  ip text,
-  mime text,
-  encoding text,
-  robots_excluded boolean,
-  PRIMARY KEY (domain, subdomain, path, protocol, crawl_time)
+	-- subdomain, ex. "www" (does not include .)
+	subdom text,
+
+	-- path with query parameters, ex. "/index.html?a=b"
+	path text,
+
+	-- protocol "http"
+	proto text,
+
+	-- time we crawled this link (or epoch, meaning not-yet-fetched)
+	time timestamp,
+
+	-- status code of the fetch (null if we did not fetch)
+	stat int,
+
+	-- error text, describes the error if we could not fetch (otherwise null)
+	err text,
+
+	-- true if this link was excluded from the crawl due to robots.txt rules
+	-- (null implies we were not excluded)
+	robot_ex boolean,
+
+	---- Items yet to be added to walker
+
+	-- fingerprint, a hash of the page contents for identity comparison
+	--fp bigint,
+
+	-- structure fingerprint, a hash of the page structure only (defined as:
+	-- html tags only, all contents and attributes stripped)
+	--structfp bigint,
+
+	-- ip address of the remote server
+	--ip text,
+
+	-- referer, maybe can be kept for parsed links
+	--ref text,
+
+	-- redirect_url if this link redirected somewhere else
+	--redirect_url text,
+
+	-- mime type, also known as Content-Type (ex. "text/html")
+	--mime text,
+
+	-- encoding of the text, ex. "utf8"
+	--encoding text,
+
+	PRIMARY KEY (dom, subdom, path, proto, time)
 ) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
 
+-- segments contains groups of links that are ready to be crawled for a given domain.
+-- Links belonging to the same domain are considered one segment.
 CREATE TABLE {{.Keyspace}}.segments (
-  domain text,
-  subdomain text,
-  path text,
-  protocol text,
-  --port int,
+	dom text,
+	subdom text,
+	path text,
+	proto text,
 
-  crawl_time timestamp,
-  PRIMARY KEY (domain, subdomain, path, protocol)
+	-- time this link was last crawled, so that we can use if-modified-since headers
+	time timestamp,
+
+	PRIMARY KEY (dom, subdom, path, proto)
 ) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
 
 CREATE TABLE {{.Keyspace}}.domain_info (
-  domain text,
-  excluded boolean,
-  exclude_reason text,
-  mirror_for text,
-  PRIMARY KEY (domain)
-) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
+	dom text,
 
-CREATE TABLE {{.Keyspace}}.domains_to_crawl (
-  priority int,
-  domain text,
-  crawler_token uuid,
-  claim_time timestamp,
-  PRIMARY KEY (priority, domain)
+	-- an arbitrary number indicating priority level for crawling this domain.
+	-- High priority domains will have segments generated more quickly when they
+	-- are exhausted and will be claimed more quickly for crawling
+	priority int,
+
+	-- UUID of the crawler that claimed this domain for crawling. This is the
+	-- zero UUID if unclaimed (it cannot be null because we index the column).
+	claim_tok uuid,
+
+	-- The time this domain was last claimed by a crawler. It remains set after
+	-- a crawler unclaims this domain (i.e. if claim_tok is the zero UUID then
+	-- claim_time simply means the last time a crawler claimed it, though we
+	-- don't know which crawler). Storing claim time is also useful for
+	-- unclaiming domains if a crawler is taking too long (implying that it was
+	-- stopped abnormally)
+	claim_time timestamp, -- define as last time crawled?
+
+	-- true if this domain has had a segment generated and is ready for crawling
+	dispatched boolean,
+
+	---- Items yet to be added to walker
+
+	-- true if this domain is excluded from the crawl (null implies not excluded)
+	--excluded boolean,
+	-- the reason this domain is excluded, null if not excluded
+	--exclude_reason text,
+
+	-- If not null, identifies another domain as a mirror of this one
+	--mirr_for text,
+
+	PRIMARY KEY (dom)
 ) WITH compaction = { 'class' : 'LeveledCompactionStrategy' };
-CREATE INDEX domains_to_crawl_crawler_token
-  ON {{.Keyspace}}.domains_to_crawl (crawler_token);
-CREATE INDEX domains_to_crawl_domain
-  ON {{.Keyspace}}.domains_to_crawl (domain)`
+CREATE INDEX ON {{.Keyspace}}.domain_info (claim_tok);
+CREATE INDEX ON {{.Keyspace}}.domain_info (priority);
+CREATE INDEX ON {{.Keyspace}}.domain_info (dispatched);`

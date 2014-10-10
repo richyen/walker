@@ -38,7 +38,7 @@ func getDB(t *testing.T) *gocql.Session {
 		return nil
 	}
 
-	tables := []string{"links", "segments", "domain_info", "domains_to_crawl"}
+	tables := []string{"links", "segments", "domain_info"}
 	for _, table := range tables {
 		err := db.Query(fmt.Sprintf(`TRUNCATE %v`, table)).Exec()
 		if err != nil {
@@ -118,15 +118,15 @@ func TestDatastoreBasic(t *testing.T) {
 	db := getDB(t)
 	ds := getDS(t)
 
-	insertDomainToCrawl := `INSERT INTO domains_to_crawl (domain, crawler_token, priority)
-								VALUES (?, ?, ?)`
-	insertSegment := `INSERT INTO segments (domain, subdomain, path, protocol)
+	insertDomainInfo := `INSERT INTO domain_info (dom, claim_tok, priority, dispatched)
+								VALUES (?, ?, ?, ?)`
+	insertSegment := `INSERT INTO segments (dom, subdom, path, proto)
 						VALUES (?, ?, ?, ?)`
-	insertLink := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time)
+	insertLink := `INSERT INTO links (dom, subdom, path, proto, time)
 						VALUES (?, ?, ?, ?, ?)`
 
 	queries := []*gocql.Query{
-		db.Query(insertDomainToCrawl, "test.com", gocql.UUID{}, 0),
+		db.Query(insertDomainInfo, "test.com", gocql.UUID{}, 0, true),
 		db.Query(insertSegment, "test.com", "", "page1.html", "http"),
 		db.Query(insertSegment, "test.com", "", "page2.html", "http"),
 		db.Query(insertLink, "test.com", "", "page1.html", "http", walker.NotYetCrawled),
@@ -163,8 +163,8 @@ func TestDatastoreBasic(t *testing.T) {
 		*page1URL.URL: 200,
 		*page2URL.URL: 200,
 	}
-	iter := db.Query(`SELECT domain, subdomain, path, protocol, crawl_time, status
-						FROM links WHERE domain = 'test.com'`).Iter()
+	iter := db.Query(`SELECT dom, subdom, path, proto, time, stat
+						FROM links WHERE dom = 'test.com'`).Iter()
 	var linkdomain, subdomain, path, protocol string
 	var status int
 	var crawl_time time.Time
@@ -184,22 +184,27 @@ func TestDatastoreBasic(t *testing.T) {
 	ds.StoreParsedURL(parse("http://test2.com/page2-1.html"), page2Fetch)
 
 	var count int
-	db.Query(`SELECT COUNT(*) FROM links WHERE domain = 'test2.com'`).Scan(&count)
+	db.Query(`SELECT COUNT(*) FROM links WHERE dom = 'test2.com'`).Scan(&count)
 	if count != 2 {
 		t.Errorf("Expected 2 parsed links to be inserted for test2.com, found %v", count)
 	}
 
 	ds.UnclaimHost("test.com")
 
-	db.Query(`SELECT COUNT(*) FROM segments WHERE domain = 'test.com'`).Scan(&count)
+	db.Query(`SELECT COUNT(*) FROM segments WHERE dom = 'test.com'`).Scan(&count)
 	if count != 0 {
 		t.Errorf("Expected links from unclaimed domain to be deleted, found %v", count)
 	}
 
-	db.Query(`SELECT COUNT(*) FROM domains_to_crawl
-				WHERE priority = ? AND domain = 'test.com'`, 0).Scan(&count)
-	if count != 0 {
-		t.Errorf("Expected unclaimed domain to be deleted from domains_to_crawl")
+	err := db.Query(`SELECT COUNT(*) FROM domain_info
+						WHERE dom = 'test.com'
+						AND claim_tok = 00000000-0000-0000-0000-000000000000
+						AND dispatched = false ALLOW FILTERING`).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query for test.com in domain_info: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("test.com has incorrect values in domain_info after unclaim")
 	}
 }
 
@@ -214,7 +219,7 @@ func TestNewDomainAdditions(t *testing.T) {
 	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
 
 	var count int
-	db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = 'test.com'`).Scan(&count)
+	db.Query(`SELECT COUNT(*) FROM domain_info WHERE dom = 'test.com'`).Scan(&count)
 	if count != 0 {
 		t.Error("Expected test.com not to be added to domain_info")
 	}
@@ -222,14 +227,21 @@ func TestNewDomainAdditions(t *testing.T) {
 	walker.Config.AddNewDomains = true
 	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
 
-	db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = 'test.com'`).Scan(&count)
+	err := db.Query(`SELECT COUNT(*) FROM domain_info
+						WHERE dom = 'test.com'
+						AND claim_tok = 00000000-0000-0000-0000-000000000000
+						AND dispatched = false
+						AND priority = 0 ALLOW FILTERING`).Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query for test.com in domain_info: %v", err)
+	}
 	if count != 1 {
-		t.Error("Expected test.com to be added to domain_info")
+		t.Fatalf("test.com not added to domain_info (possibly incorrect field values)")
 	}
 
-	db.Query(`DELETE FROM domain_info WHERE domain = 'test.com'`).Exec()
+	db.Query(`DELETE FROM domain_info WHERE dom = 'test.com'`).Exec()
 	ds.StoreParsedURL(parse("http://test.com/page1-1.html"), page1Fetch)
-	db.Query(`SELECT COUNT(*) FROM domain_info WHERE domain = 'test.com'`).Scan(&count)
+	db.Query(`SELECT COUNT(*) FROM domain_info WHERE dom = 'test.com'`).Scan(&count)
 	if count != 0 {
 		t.Error("Expected test.com not to be added to domain_info due to cache")
 	}
@@ -367,8 +379,8 @@ func TestStoreURLFetchResults(t *testing.T) {
 
 		actual := &LinksExpectation{}
 		err := db.Query(
-			`SELECT error, robots_excluded, status FROM links
-			WHERE domain = ? AND subdomain = ? AND path = ? AND protocol = ?`, // AND crawl_time = ?`,
+			`SELECT err, robot_ex, stat FROM links
+			WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?`, // AND time = ?`,
 			exp.Domain,
 			exp.Subdomain,
 			exp.Path,
@@ -379,15 +391,15 @@ func TestStoreURLFetchResults(t *testing.T) {
 			t.Errorf("Did not find row in links: %+v\nInput: %+v\nError: %v", exp, tcase.Input, err)
 		}
 		if exp.FetchError != actual.FetchError {
-			t.Errorf("Expected error: %v\nBut got: %v\nFor input: %+v",
+			t.Errorf("Expected err: %v\nBut got: %v\nFor input: %+v",
 				exp.FetchError, actual.FetchError, tcase.Input)
 		}
 		if exp.ExcludedByRobots != actual.ExcludedByRobots {
-			t.Errorf("Expected robots_excluded: %v\nBut got: %v\nFor input: %+v",
+			t.Errorf("Expected robot_ex: %v\nBut got: %v\nFor input: %+v",
 				exp.ExcludedByRobots, actual.ExcludedByRobots, tcase.Input)
 		}
 		if exp.Status != actual.Status {
-			t.Errorf("Expected status: %v\nBut got: %v\nFor input: %+v",
+			t.Errorf("Expected stat: %v\nBut got: %v\nFor input: %+v",
 				exp.Status, actual.Status, tcase.Input)
 		}
 	}
