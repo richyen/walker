@@ -217,7 +217,7 @@ crawl, regardless of the add_new_domains configuration setting.`,
 schema-relevant configuration items (ex. keyspace, replication factor).
 Useful for something like:
 	$ <edit walker.yaml as desired>
-	$ walker schema > schema.cql
+	$ walker schema -o schema.cql
 	$ <edit schema.cql further as desired>
 	$ cqlsh -f schema.cql
 `,
