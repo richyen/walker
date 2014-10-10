@@ -81,6 +81,10 @@ type WalkerConfig struct {
 		//MaxPreparedStmts int
 		//Discovery        DiscoveryConfig
 	} `yaml:"cassandra"`
+
+	Console struct {
+		TemplateDirectory string `yaml:template_directory`
+	}
 }
 
 // SetDefaultConfig resets the Config object to default values, regardless of
@@ -98,9 +102,12 @@ func SetDefaultConfig() {
 	Config.MaxLinksPerPage = 1000
 	Config.NumSimultaneousFetchers = 10
 	Config.BlacklistPrivateIPs = true
+
 	Config.Cassandra.Hosts = []string{"localhost"}
 	Config.Cassandra.Keyspace = "walker"
 	Config.Cassandra.ReplicationFactor = 3
+
+	Config.Console.TemplateDirectory = "templates"
 }
 
 // ReadConfigFile sets a new path to find the walker yaml config file and

@@ -17,28 +17,28 @@ type Route struct {
 
 func Routes() []Route {
 	return []Route{
-		Route{Path: "/", Controller: homeController},
-		Route{Path: "/list", Controller: listDomainsController},
-		Route{Path: "/list/", Controller: listDomainsController},
-		Route{Path: "/list/{seed}", Controller: listDomainsController},
-		Route{Path: "/find", Controller: findDomainController},
-		Route{Path: "/find/", Controller: findDomainController},
-		Route{Path: "/add", Controller: addLinkIndexController},
-		Route{Path: "/add/", Controller: addLinkIndexController},
-		Route{Path: "/links/{domain}", Controller: linksController},
-		Route{Path: "/links/{domain}/{seedUrl}", Controller: linksController},
-		Route{Path: "/historical/{url}", Controller: linksHistoricalController},
-		Route{Path: "/findLinks", Controller: findLinksController},
+		Route{Path: "/", Controller: HomeController},
+		Route{Path: "/list", Controller: ListDomainsController},
+		Route{Path: "/list/", Controller: ListDomainsController},
+		Route{Path: "/list/{seed}", Controller: ListDomainsController},
+		Route{Path: "/find", Controller: FindDomainController},
+		Route{Path: "/find/", Controller: FindDomainController},
+		Route{Path: "/add", Controller: AddLinkIndexController},
+		Route{Path: "/add/", Controller: AddLinkIndexController},
+		Route{Path: "/links/{domain}", Controller: LinksController},
+		Route{Path: "/links/{domain}/{seedUrl}", Controller: LinksController},
+		Route{Path: "/historical/{url}", Controller: LinksHistoricalController},
+		Route{Path: "/findLinks", Controller: FindLinksController},
 	}
 }
 
-func homeController(w http.ResponseWriter, req *http.Request) {
+func HomeController(w http.ResponseWriter, req *http.Request) {
 	mp := map[string]interface{}{}
 	Render.HTML(w, http.StatusOK, "home", mp)
 	return
 }
 
-func listDomainsController(w http.ResponseWriter, req *http.Request) {
+func ListDomainsController(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	seed := vars["seed"]
 	prevButtonClass := ""
@@ -76,7 +76,7 @@ func listDomainsController(w http.ResponseWriter, req *http.Request) {
 	Render.HTML(w, http.StatusOK, "list", mp)
 }
 
-func findDomainController(w http.ResponseWriter, req *http.Request) {
+func FindDomainController(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "find", mp)
@@ -168,7 +168,7 @@ func findDomainController(w http.ResponseWriter, req *http.Request) {
 
 // TODO: I think that we should have a confirm page after you add the links. But thats
 // an advanced feature.
-func addLinkIndexController(w http.ResponseWriter, req *http.Request) {
+func AddLinkIndexController(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "add", mp)
@@ -249,7 +249,7 @@ func addLinkIndexController(w http.ResponseWriter, req *http.Request) {
 // .html, it appears that this is causing the server to throw a 301. Unknown why that is. But the net effect
 // is that, if I totally disguise the link in base32, everything works.
 
-func linksController(w http.ResponseWriter, req *http.Request) {
+func LinksController(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	domain := vars["domain"]
 	if domain == "" {
@@ -317,7 +317,7 @@ func linksController(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
-func linksHistoricalController(w http.ResponseWriter, req *http.Request) {
+func LinksHistoricalController(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	url := vars["url"]
 	if url == "" {
@@ -344,7 +344,7 @@ func linksHistoricalController(w http.ResponseWriter, req *http.Request) {
 	Render.HTML(w, http.StatusOK, "historical", mp)
 }
 
-func findLinksController(w http.ResponseWriter, req *http.Request) {
+func FindLinksController(w http.ResponseWriter, req *http.Request) {
 	if req.Method != "POST" {
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "findLinks", mp)

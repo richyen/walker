@@ -69,27 +69,27 @@ func fuuidFunc(u gocql.UUID) string {
 	}
 }
 
-// func statusText(status int) string {
-//  return http.StatusText(status)
-// }
+var Render *render.Render
 
-var Render = render.New(render.Options{
-	Layout:        "layout",
-	IndentJSON:    true,
-	IsDevelopment: true,
-	Funcs: []template.FuncMap{
-		template.FuncMap{
-			"yesOnFilled": yesOnFilledFunc,
-			"activeSince": activeSinceFunc,
-			"ftime":       ftimeFunc,
-			"ftime2":      ftime2Func,
-			"fuuid":       fuuidFunc,
-			"statusText":  http.StatusText,
-			"yesOnTrue":   yesOnTrueFunc,
+func BuildRender() {
+	Render = render.New(render.Options{
+		Directory:     walker.Config.Console.TemplateDirectory,
+		Layout:        "layout",
+		IndentJSON:    true,
+		IsDevelopment: true,
+		Funcs: []template.FuncMap{
+			template.FuncMap{
+				"yesOnFilled": yesOnFilledFunc,
+				"activeSince": activeSinceFunc,
+				"ftime":       ftimeFunc,
+				"ftime2":      ftime2Func,
+				"fuuid":       fuuidFunc,
+				"statusText":  http.StatusText,
+				"yesOnTrue":   yesOnTrueFunc,
+			},
 		},
-	},
-})
-
+	})
+}
 func replyFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
 	if len(keyValues)%2 != 0 {
 		panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: keyValues does not have even number of elements"))

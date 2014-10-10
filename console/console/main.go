@@ -255,6 +255,8 @@ func main() {
 	console.DS = ds
 	defer ds.Close()
 
+	console.BuildRender()
+
 	router := mux.NewRouter()
 	routes := console.Routes()
 	for _, route := range routes {

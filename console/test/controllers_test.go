@@ -3,6 +3,7 @@ package test
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -104,6 +105,9 @@ func spoofDataLong() {
 		walker.Config.Cassandra.Keyspace = "walker_test"
 		walker.Config.Cassandra.Hosts = []string{"localhost"}
 		walker.Config.Cassandra.ReplicationFactor = 1
+		walker.Config.Console.TemplateDirectory = "../templates"
+
+		console.BuildRender()
 		err := walker.CreateCassandraSchema()
 		if err != nil {
 			panic(err)
@@ -114,7 +118,6 @@ func spoofDataLong() {
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
 	}
-	defer ds.Close()
 	db := ds.Db
 
 	//
@@ -250,7 +253,8 @@ func spoofDataLong() {
 		}
 	}
 
-	//DS is used in the handlers. Notice that in the current incarnation, this
+	//DS is used in the handlers. Notice that in the current incarnation, this handle
+	//is never closed. Just like the real application
 	console.DS = ds
 
 	return
@@ -278,8 +282,8 @@ func newDoc(html string) *goquery.Document {
 	return doc
 }
 
-func callController(url string, body string, controller func(w http.ResponseWriter, req *http.Request)) (*goquery.Document, int) {
-	var bodyBuff *bytes.Buffer = nil
+func callController(url string, body string, controller func(w http.ResponseWriter, req *http.Request)) (*goquery.Document, string, int) {
+	var bodyBuff io.Reader = nil
 	method := "GET"
 	if body != "" {
 		bodyBuff = bytes.NewBufferString(body)
@@ -301,18 +305,173 @@ func callController(url string, body string, controller func(w http.ResponseWrit
 		panic(err)
 	}
 
-	return doc, status
+	return doc, output, status
 }
 
-func TestInit(t *testing.T) {
+func TestLayout(t *testing.T) {
 	spoofData()
-	//doc, status := callController("localhost:3000", "", console.home)
-	fmt.Printf("I'm the pimp\n")
+	doc, body, status := callController("localhost:3000", "", console.HomeController)
+	if status != http.StatusOK {
+		t.Errorf("TestHome bad status code got %d, expected %d", status, http.StatusOK)
+		t.Log(body)
+		t.Fail()
+	}
 
-	doc := newDoc(htmlBody)
-	doc.Find("h1").Each(func(i int, sel *goquery.Selection) {
-		fmt.Printf("Each; %s\n", sel.Text())
+	// Make sure the main menu is there
+	mainLinks := map[string]string{
+		"/list":      "List",
+		"/find":      "Find Domains",
+		"/findLinks": "Find Links",
+		"/add":       "Add",
+	}
+	doc.Find("nav ul li a").Each(func(index int, sel *goquery.Selection) {
+		link, linkOk := sel.Attr("href")
+		if !linkOk {
+			t.Errorf("[nav ul li a] Failed to find href attribute in main menu list")
+			return
+		}
+		text := strings.TrimSpace(sel.Text())
+		found, foundOk := mainLinks[link]
+
+		if !foundOk {
+			t.Errorf("[nav ul li a] Failed to find link '%s' in menu list", link)
+			return
+		}
+
+		if found != text {
+			t.Errorf("[nav ul li a] Failed to find text '%s' for link %s", text, link)
+			return
+		}
+
+		delete(mainLinks, link)
+	})
+	for k, v := range mainLinks {
+		t.Errorf("[nav ul li a] Unfound link %v (%v)", k, v)
+	}
+
+	cssLinks := map[string]bool{
+		"/css/bootstrap.css": true,
+		"/css/custom.css":    true,
+	}
+	if doc.Find("head link").Size() <= 0 {
+		t.Errorf("[nav ul li a] Failed to find anything")
+	}
+	doc.Find("head link").Each(func(index int, sel *goquery.Selection) {
+		link, linkOk := sel.Attr("href")
+		if !linkOk {
+			t.Errorf("[head link] Failed to find href")
+			return
+		}
+		if !cssLinks[link] {
+			t.Errorf("[head link] Failed to find link %s", link)
+			return
+		}
+
+		delete(cssLinks, link)
+	})
+	for k, v := range mainLinks {
+		t.Errorf("[head link] Unfound link %v (%v)", k, v)
+	}
+
+	jsLinks := map[string]bool{
+		"/js/jquery-2.1.1.js": true,
+		"/js/bootstrap.js":    true,
+	}
+	doc.Find("head script").Each(func(index int, sel *goquery.Selection) {
+		link, linkOk := sel.Attr("src")
+		if !linkOk {
+			t.Errorf("[head script] Failed to find src")
+			return
+		}
+		if !jsLinks[link] {
+			t.Errorf("[head script] Failed to find link %s", link)
+			return
+		}
+
+		delete(jsLinks, link)
+	})
+	for k, v := range mainLinks {
+		t.Errorf("[head script] Unfound link %v (%v)", k, v)
+	}
+}
+
+func TestHome(t *testing.T) {
+	spoofData()
+	doc, body, status := callController("localhost:3000", "", console.HomeController)
+	if status != http.StatusOK {
+		t.Errorf("TestHome bad status code got %d, expected %d", status, http.StatusOK)
+		t.Log(body)
+		t.Fail()
+	}
+
+	numPP := doc.Find(".container p").Size()
+	if numPP != 1 {
+		t.Errorf("[.container p] Expected 1 paragraph, found %d", numPP)
+	}
+	doc.Find(".container p").Each(func(index int, sel *goquery.Selection) {
+		text := strings.TrimSpace(sel.Text())
+		if !strings.Contains(text, "Walker Console") {
+			t.Errorf("[.container p] Expected string containing Walker Console: Got '%v'", text)
+		}
+	})
+}
+
+func TestListDomains(t *testing.T) {
+	spoofData()
+	doc, body, status := callController("localhost:3000/list", "", console.ListDomainsController)
+	if status != http.StatusOK {
+		t.Errorf("TestListDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fail()
+	}
+	header := []string{
+		"Domain",
+		"LinksTotal",
+		"LinksQueued",
+		"Excluded",
+		"TimeQueued",
+	}
+	failed := false
+	doc.Find(".container table thead td").Each(func(index int, sel *goquery.Selection) {
+		if failed {
+			return
+		}
+
+		text := strings.TrimSpace(sel.Text())
+		if text != header[0] {
+			t.Errorf("[.container table thead td] Bad order got '%v' expected '%v'", text, header[0])
+			failed = true
+			return
+		}
+		header = header[1:]
 	})
 
-	t.Fail()
+	failed = false
+	count := 0
+	doc.Find(".container table tbody tr td a").Each(func(index int, sel *goquery.Selection) {
+		if failed {
+			return
+		}
+
+		link, linkOk := sel.Attr("href")
+		if !linkOk {
+			t.Errorf("[.container table tbody tr td a] Failed to find href")
+			failed = true
+			return
+		}
+		text := strings.TrimSpace(sel.Text())
+		elink := "/links/" + text
+		if elink != link {
+			t.Errorf("[.container table tbody tr td a] link mismatch expected '%v' got '%v'", elink, link)
+			failed = true
+			return
+		}
+		count++
+	})
+
+	minCount := 10
+	if !failed && count < minCount {
+		t.Errorf("[.container table tbody tr td a] Had less than %d elements", minCount)
+	}
 }
