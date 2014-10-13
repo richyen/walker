@@ -3,6 +3,7 @@
 package test
 
 import (
+	"net/http"
 	"net/url"
 	"reflect"
 
@@ -28,12 +29,8 @@ type ExistingDomainInfo struct {
 
 type ExistingLink struct {
 	URL    walker.URL
-	Status *int // nil means parsed link, not crawled yet
+	Status int // -1 indicates this is a parsed link, not yet fetched
 }
-
-var Status200 = 200
-var Status404 = 404
-var Status500 = 500
 
 var DispatcherTests = []DispatcherTest{
 	{ // A basic run test
@@ -42,25 +39,25 @@ var DispatcherTests = []DispatcherTest{
 		},
 		[]ExistingLink{
 			{URL: walker.URL{URL: urlParse("http://test.com/page1.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 			{URL: walker.URL{URL: urlParse("http://test.com/page2.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 			{URL: walker.URL{URL: urlParse("http://test.com/page404.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 			{URL: walker.URL{URL: urlParse("http://test.com/page500.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled1.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled2.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 			{URL: walker.URL{URL: urlParse("http://test.com/page1.html"),
-				LastCrawled: time.Now()}, Status: &Status200},
+				LastCrawled: time.Now()}, Status: http.StatusOK},
 			{URL: walker.URL{URL: urlParse("http://test.com/page2.html"),
-				LastCrawled: time.Now()}, Status: &Status200},
+				LastCrawled: time.Now()}, Status: http.StatusOK},
 			{URL: walker.URL{URL: urlParse("http://test.com/page404.html"),
-				LastCrawled: time.Now()}, Status: &Status404},
+				LastCrawled: time.Now()}, Status: http.StatusNotFound},
 			{URL: walker.URL{URL: urlParse("http://test.com/page500.html"),
-				LastCrawled: time.Now()}, Status: &Status500},
+				LastCrawled: time.Now()}, Status: http.StatusInternalServerError},
 		},
 		[]walker.URL{
 			{URL: urlParse("http://test.com/notcrawled1.html"),
@@ -75,7 +72,7 @@ var DispatcherTests = []DispatcherTest{
 		},
 		[]ExistingLink{
 			{URL: walker.URL{URL: urlParse("http://test.com/page1.html?p=v"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 		},
 		[]walker.URL{
 			{URL: urlParse("http://test.com/page1.html?p=v"),
@@ -88,7 +85,7 @@ var DispatcherTests = []DispatcherTest{
 		},
 		[]ExistingLink{
 			{URL: walker.URL{URL: urlParse("http://test.com/page1.html"),
-				LastCrawled: walker.NotYetCrawled}, Status: nil},
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
 		},
 		[]walker.URL{},
 	},
@@ -110,7 +107,7 @@ func TestDispatcherBasic(t *testing.T) {
 		}
 
 		for _, el := range dt.ExistingLinks {
-			if el.Status == nil {
+			if el.Status == -1 {
 				q = db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
 								VALUES (?, ?, ?, ?, ?)`,
 					el.URL.ToplevelDomainPlusOne(),
