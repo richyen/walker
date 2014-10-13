@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"code.google.com/p/log4go"
 	"github.com/gorilla/mux"
 	"github.com/iParadigms/walker"
 )
@@ -88,14 +89,17 @@ func FindDomainController(w http.ResponseWriter, req *http.Request) {
 		replyServerError(w, err)
 		return
 	}
+
 	targetAll, ok := req.Form["targets"]
-	if !ok {
+	if !ok || len(targetAll) < 1 {
+		log4go.Error("Targets was not defined correctly %v", targetAll)
 		mp := map[string]interface{}{}
 		Render.HTML(w, http.StatusOK, "find", mp)
 		return
 	}
 
-	lines := strings.Split(targetAll[0], "\n")
+	rawLines := targetAll[0]
+	lines := strings.Split(rawLines, "\n")
 	targets := []string{}
 	for i := range lines {
 		t := strings.TrimSpace(lines[i])
@@ -117,13 +121,6 @@ func FindDomainController(w http.ResponseWriter, req *http.Request) {
 	var errs []string
 	var info []string
 	for _, target := range targets {
-		t, err := url.QueryUnescape(target)
-		if err != nil {
-			errs = append(errs, fmt.Sprintf("Failed to decode domain %s", target))
-			continue
-		}
-		target = t
-
 		dinfo, err := DS.FindDomain(target)
 		if err != nil {
 			errs = append(errs, fmt.Sprintf("FindDomain failed: %v", err))

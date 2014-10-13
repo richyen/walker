@@ -277,14 +277,18 @@ var htmlBody string = `
 func callController(url string, body string, urlPattern string, controller func(w http.ResponseWriter, req *http.Request)) (*goquery.Document, string, int) {
 	var bodyBuff io.Reader = nil
 	method := "GET"
+	ct := ""
 	if body != "" {
 		bodyBuff = bytes.NewBufferString(body)
 		method = "POST"
+		ct = "application/x-www-form-urlencoded; param=value"
 	}
-	fmt.Printf("METHOD(%s): %s\n", method, body)
 	req, err := http.NewRequest(method, url, bodyBuff)
 	if err != nil {
 		panic(err)
+	}
+	if ct != "" {
+		req.Header.Set("Content-Type", ct)
 	}
 
 	// Need to build a router to get the Gorrilla mux Vars correct
@@ -850,11 +854,6 @@ func TestListHistorical(t *testing.T) {
 		return
 	}
 
-	tables.Find("thead th").Each(func(index int, sel *goquery.Selection) {
-		text := strings.TrimSpace(sel.Text())
-		fmt.Printf(">> %s\n", text)
-	})
-
 	colHeaders := []string{
 		"Fetched On",
 		"Robots Excluded",
@@ -949,13 +948,233 @@ func TestFindDomains(t *testing.T) {
 	//
 	// Lets submit a find request
 	//
-	doc, body, status = callController("http://localhost:3000/find", "targets=t1.com%0At2.com%0At3.com", "/find", console.FindDomainController)
+	rawBody := "targets=t1.com%0D%0At2.com%0D%0At3.com"
+	doc, body, status = callController("http://localhost:3000/find", rawBody, "/find", console.FindDomainController)
 	if status != http.StatusOK {
 		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
 		body = ""
 		t.Log(body)
 		t.Fatalf("")
 	}
-	fmt.Printf(">> %s\n", body)
-	t.Fail()
+	expLinks := []string{
+		"/links/t1.com",
+		"/links/t2.com",
+		"/links/t3.com",
+	}
+	links := doc.Find(".container table tbody tr a")
+	if links.Size() != 3 {
+		t.Fatalf("[.container table tbody tr a] Expected 3 elements")
+	}
+	count := 0
+	links.Each(func(index int, sel *goquery.Selection) {
+		href, hrefOk := sel.Attr("href")
+		if !hrefOk {
+			t.Fatalf("[.container table tbody tr a] Failed to find href attribute")
+		} else if expLinks[count] != href {
+			t.Fatalf("[.container table tbody tr a] href link mismatch, got '%v', expected '%v'", href, expLinks[count])
+		}
+
+		count++
+	})
+
+	//
+	// Lets submit a bad find request
+	//
+	rawBody = "targets=NOTTHERE1.com%0D%0ANOTTHERE2.com%0D%0ANOTTHERE3.com"
+	doc, body, status = callController("http://localhost:3000/find", rawBody, "/find", console.FindDomainController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fatalf("")
+	}
+
+	expMessages := []string{
+		"Failed to find domain NOTTHERE1.com",
+		"Failed to find domain NOTTHERE2.com",
+		"Failed to find domain NOTTHERE3.com",
+	}
+	messages := doc.Find(".container > ul li")
+	if messages.Size() != 4 {
+		t.Fatalf("[.container ul li] Message mismatch: got %d, expected 4", messages.Size())
+	}
+	count = 0
+	messages.Each(func(index int, sel *goquery.Selection) {
+		if count >= 3 {
+			return
+		}
+		text := strings.TrimSpace(sel.Text())
+		if expMessages[count] != text {
+			t.Fatalf("[.container ul li] Text mismatch, got '%v', expected '%v'", text, expMessages[count])
+		}
+		count++
+	})
+
+}
+
+func TestFindLinks(t *testing.T) {
+	spoofData()
+
+	//
+	// First get the domain page, and find the historical link
+	//
+	doc, body, status := callController("http://localhost:3000/findLinks", "", "/findLinks", console.FindLinksController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fatalf("")
+	}
+
+	doc.Find(".container h2").Each(func(index int, sel *goquery.Selection) {
+		text := strings.TrimSpace(sel.Text())
+		if text != "Find Links" {
+			t.Errorf("[.container h2] Header mismatch got '%s', expected '%s'", text, "Find Links")
+		}
+	})
+
+	form := doc.Find(".container form")
+	textarea := form.Find("textarea")
+	input := form.Find("input")
+	if textarea.Size() != 1 {
+		t.Fatalf("[.container form textarea] Count got %d, expected 1", textarea.Size())
+	}
+	placeholder, placeholderOk := textarea.Attr("placeholder")
+	if !placeholderOk {
+		t.Errorf("[.container form textarea] Failed to find placeholder attribute")
+	} else {
+		e := "Enter links: one per line"
+		if placeholder != e {
+			t.Errorf("[.container form textarea] Bad placeholder attribute got %s, expected %s", placeholder, e)
+		}
+	}
+
+	if input.Size() != 1 {
+		t.Fatalf("[.container form input] Count got %d, expected 1", input.Size())
+	}
+	typ, typOk := input.Attr("type")
+	if !typOk {
+		t.Fatalf("[.container form input] Failed to find type attribute")
+	} else if typ != "submit" {
+		t.Errorf("[.container form input] Bad type got %s, expected submit", typ)
+	}
+
+	//
+	// Submit a find request
+	//
+	rawBody := "links=http://link.t1.com/page0.html%0D%0A"
+	doc, body, status = callController("http://localhost:3000/findLinks", rawBody, "/findLinks", console.FindLinksController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fatalf("")
+	}
+	res := doc.Find(".container table tbody tr td")
+	if res.Size() != 5 {
+		t.Errorf("[.container table tbody tr td] Bad size got %d, expected 1", res.Size())
+	}
+	res.First().Each(func(index int, sel *goquery.Selection) {
+		text := strings.TrimSpace(sel.Text())
+		e := "http://link.t1.com/page0.html"
+		if text != e {
+			t.Fatalf("[.container table tbody tr td] Mismatched text got '%v', expected '%v'", text, e)
+		}
+	})
+}
+
+func TestAddLinks(t *testing.T) {
+	spoofData()
+
+	//
+	// First get the domain page, and find the historical link
+	//
+	doc, body, status := callController("http://localhost:3000/add", "", "/add", console.AddLinkIndexController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fatalf("")
+	}
+
+	doc.Find(".container h2").Each(func(index int, sel *goquery.Selection) {
+		text := strings.TrimSpace(sel.Text())
+		e := "Add Links"
+		if text != e {
+			t.Errorf("[.container h2] Header mismatch got '%s', expected '%s'", text, e)
+		}
+	})
+
+	form := doc.Find(".container form")
+	textarea := form.Find("textarea")
+	input := form.Find("input")
+	if textarea.Size() != 1 {
+		t.Fatalf("[.container form textarea] Count got %d, expected 1", textarea.Size())
+	}
+	placeholder, placeholderOk := textarea.Attr("placeholder")
+	if !placeholderOk {
+		t.Errorf("[.container form textarea] Failed to find placeholder attribute")
+	} else {
+		e := "Enter links: one per line"
+		if placeholder != e {
+			t.Errorf("[.container form textarea] Bad placeholder attribute got %s, expected %s", placeholder, e)
+		}
+	}
+
+	if input.Size() != 1 {
+		t.Fatalf("[.container form input] Count got %d, expected 1", input.Size())
+	}
+	typ, typOk := input.Attr("type")
+	if !typOk {
+		t.Fatalf("[.container form input] Failed to find type attribute")
+	} else if typ != "submit" {
+		t.Errorf("[.container form input] Bad type got %s, expected submit", typ)
+	}
+
+	//
+	// Submit an add request
+	//
+	randDomain := fmt.Sprintf("rand%d.com", rand.Uint32())
+	randLink := fmt.Sprintf("http://sub.%s.com/page0.html", randDomain)
+	rawBody := "links=" + randLink + "%0D%0A"
+	doc, body, status = callController("http://localhost:3000/add", rawBody, "/add", console.AddLinkIndexController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fatalf("")
+	}
+	res := doc.Find(".container > ul li")
+	if res.Size() != 1 {
+		t.Fatalf("[.container ul li] Bad size got %d, expected 1", res.Size())
+	}
+	res.Each(func(index int, sel *goquery.Selection) {
+		text := strings.TrimSpace(sel.Text())
+		e := "All links added"
+		if text != e {
+			t.Fatalf("[.container ul li] Mismatched text got '%v', expected '%v'", text, e)
+		}
+	})
+
+	//
+	// Find the link
+	//
+	doc, body, status = callController("http://localhost:3000/findLinks", rawBody, "/findLinks", console.FindLinksController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		body = ""
+		t.Log(body)
+		t.Fatalf("")
+	}
+	res = doc.Find(".container table tbody tr td")
+	if res.Size() != 5 {
+		t.Errorf("[.container table tbody tr td] Bad size got %d, expected 5", res.Size())
+	}
+	res.First().Each(func(index int, sel *goquery.Selection) {
+		text := strings.TrimSpace(sel.Text())
+		if text != randLink {
+			t.Fatalf("[.container table tbody tr td] Mismatched text got '%v', expected '%v'", text, randLink)
+		}
+	})
+
 }
