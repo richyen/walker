@@ -82,7 +82,8 @@ func (d *CassandraDispatcher) StopDispatcher() error {
 func (d *CassandraDispatcher) domainIterator() {
 	for {
 		log4go.Debug("Starting new domain iteration")
-		domainiter := d.db.Query(`SELECT domain FROM domain_info`).Iter()
+		domainiter := d.db.Query(`SELECT dom FROM domain_info
+									WHERE claim_tok = 00000000-0000-0000-0000-000000000000`).Iter()
 
 		domain := ""
 		for domainiter.Scan(&domain) {
@@ -117,33 +118,11 @@ func (d *CassandraDispatcher) domainIterator() {
 
 func (d *CassandraDispatcher) generateRoutine() {
 	for domain := range d.domains {
-		scheduled, err := d.domainAlreadyScheduled(domain)
-		if err != nil {
-			log4go.Error(err.Error())
-			continue
-		}
-		if scheduled {
-			log4go.Debug("%v already scheduled to crawl, not generating a segment", domain)
-			continue
-		}
-
 		if err := d.generateSegment(domain); err != nil {
 			log4go.Error("error generating segment for %v: %v", domain, err)
 		}
 	}
 	log4go.Debug("Finishing generateRoutine")
-}
-
-// domainAlreadyScheduled verifies that this domain isn't already in
-// domains_to_crawl
-func (d *CassandraDispatcher) domainAlreadyScheduled(domain string) (bool, error) {
-	var count int
-	err := d.db.Query(`SELECT COUNT(*) FROM domains_to_crawl
-						WHERE domain = ? ALLOW FILTERING`, domain).Scan(&count)
-	if err != nil {
-		return true, fmt.Errorf("Failed to query for domain count of %v: %v", domain, err)
-	}
-	return count > 0, nil
 }
 
 // generateSegment reads links in for this domain, generates a segment for it,
@@ -154,9 +133,9 @@ func (d *CassandraDispatcher) domainAlreadyScheduled(domain string) (bool, error
 // haven't crawled yet. We never recrawl.
 func (d *CassandraDispatcher) generateSegment(domain string) error {
 	log4go.Info("Generating a crawl segment for %v", domain)
-	iter := d.db.Query(`SELECT domain, subdomain, path, protocol, crawl_time
-						FROM links WHERE domain = ?
-						ORDER BY subdomain, path, protocol, crawl_time`, domain).Iter()
+	iter := d.db.Query(`SELECT dom, subdom, path, proto, time
+						FROM links WHERE dom = ?
+						ORDER BY subdom, path, proto, time`, domain).Iter()
 	var linkdomain, subdomain, path, protocol string
 	var crawl_time time.Time
 	links := make(map[string]*URL)
@@ -192,7 +171,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	for _, u := range links {
 		log4go.Debug("Inserting link in segment: %v", u)
 		err := d.db.Query(`INSERT INTO segments
-			(domain, subdomain, path, protocol, crawl_time)
+			(dom, subdom, path, proto, time)
 			VALUES (?, ?, ?, ?, ?)`,
 			u.ToplevelDomainPlusOne(), u.Subdomain(), u.Path, u.Scheme, u.LastCrawled).Exec()
 
@@ -200,8 +179,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			log4go.Error("Failed to insert link (%v), error: %v", u, err)
 		}
 	}
-	err := d.db.Query(`INSERT INTO domains_to_crawl (domain, priority, crawler_token)
-		VALUES (?, ?, 00000000-0000-0000-0000-000000000000)`, domain, 0).Exec()
+	err := d.db.Query(`UPDATE domain_info SET dispatched = true WHERE dom = ?`, domain).Exec()
 	if err != nil {
 		return fmt.Errorf("error inserting %v to domains_to_crawl: %v", domain, err)
 	}
@@ -215,7 +193,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	//				VALUES (?, ?, 00000000-0000-0000-0000-000000000000)`, domain, 0)
 	//for u, _ := range links {
 	//	log4go.Debug("Adding link to segment batch insert: %v", u)
-	//	batch.Query(`INSERT INTO segments (domain, subdomain, path, protocol, crawl_time)
+	//	batch.Query(`INSERT INTO segments (domain, subdom, path, proto, time)
 	//						VALUES (?, ?, ?, ?, ?)`,
 	//		u.Host, "", u.Path, u.Scheme, NotYetCrawled)
 	//}
