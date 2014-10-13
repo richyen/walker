@@ -1,3 +1,6 @@
+/*
+	This file contains functionality related to rendering templates
+*/
 package console
 
 import (

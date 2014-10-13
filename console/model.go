@@ -1,3 +1,7 @@
+/*
+	Model contains data source related code.
+*/
+
 package console
 
 import (

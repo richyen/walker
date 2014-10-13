@@ -1,3 +1,6 @@
+/*
+	This file contains the web-facing handlers.
+*/
 package console
 
 import (
