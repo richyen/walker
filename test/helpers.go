@@ -3,6 +3,7 @@ package test
 import (
 	"net"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/iParadigms/walker"
@@ -25,7 +26,20 @@ func GetFakeTransport() http.RoundTripper {
 
 // parse is a helper to just get a URL object from a string we know is a safe
 // url (ParseURL requires us to deal with potential errors)
-func parse(link string) *walker.URL {
-	u, _ := walker.ParseURL(link)
+func parse(ref string) *walker.URL {
+	u, err := walker.ParseURL(ref)
+	if err != nil {
+		panic("Failed to parse walker.URL: " + ref)
+	}
+	return u
+}
+
+// urlParse is similar to `parse` but gives a Go builtin URL type (not a walker
+// URL)
+func urlParse(ref string) *url.URL {
+	u, err := url.Parse(ref)
+	if err != nil {
+		panic("Failed to parse url.URL: " + ref)
+	}
 	return u
 }

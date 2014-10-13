@@ -201,7 +201,8 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		inserts = append(inserts, dbfield{"stat", fr.Response.StatusCode})
 	}
 
-	//TODO: redirectURL, _ := fr.Res.Location()
+	//TODO: if this was a redirect, possibly insert row for originally
+	//		requested URL and one for actual URL fetched
 	//TODO: fp
 	//TODO: can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
 	//TODO: fr.Res.Header.Get("Content-Type"),

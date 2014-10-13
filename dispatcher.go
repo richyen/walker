@@ -82,11 +82,12 @@ func (d *CassandraDispatcher) StopDispatcher() error {
 func (d *CassandraDispatcher) domainIterator() {
 	for {
 		log4go.Debug("Starting new domain iteration")
-		domainiter := d.db.Query(`SELECT dom FROM domain_info
+		domainiter := d.db.Query(`SELECT dom, dispatched FROM domain_info
 									WHERE claim_tok = 00000000-0000-0000-0000-000000000000`).Iter()
 
-		domain := ""
-		for domainiter.Scan(&domain) {
+		var domain string
+		var dispatched bool
+		for domainiter.Scan(&domain, &dispatched) {
 			select {
 			case <-d.quit:
 				log4go.Debug("Domain iterator signaled to stop")
@@ -95,7 +96,9 @@ func (d *CassandraDispatcher) domainIterator() {
 			default:
 			}
 
-			d.domains <- domain
+			if !dispatched {
+				d.domains <- domain
+			}
 		}
 
 		// Check for exit here as well in case domain_info is empty
@@ -173,7 +176,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		err := d.db.Query(`INSERT INTO segments
 			(dom, subdom, path, proto, time)
 			VALUES (?, ?, ?, ?, ?)`,
-			u.ToplevelDomainPlusOne(), u.Subdomain(), u.Path, u.Scheme, u.LastCrawled).Exec()
+			u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme, u.LastCrawled).Exec()
 
 		if err != nil {
 			log4go.Error("Failed to insert link (%v), error: %v", u, err)
