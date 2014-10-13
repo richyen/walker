@@ -186,7 +186,7 @@ func TestHome(t *testing.T) {
 	})
 }
 
-func TestListDomains(t *testing.T) {
+func TestListDomainsWeb(t *testing.T) {
 	spoofData()
 	doc, body, status := callController("http://localhost:3000/list", "", "/list", console.ListDomainsController)
 	if status != http.StatusOK {
@@ -241,7 +241,7 @@ func TestListDomains(t *testing.T) {
 	}
 }
 
-func TestListLinks(t *testing.T) {
+func TestListLinksWeb(t *testing.T) {
 	spoofData()
 	doc, body, status := callController("http://localhost:3000/links/t1.com", "", "/links/{domain}", console.LinksController)
 	if status != http.StatusOK {

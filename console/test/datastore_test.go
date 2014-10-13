@@ -171,13 +171,14 @@ var fooDomain = console.DomainInfo{
 	Domain:            "foo.com",
 	NumberLinksTotal:  2,
 	NumberLinksQueued: 0,
+	TimeQueued:        walker.NotYetCrawled,
 }
 
 var barDomain = console.DomainInfo{
 	Domain:            "bar.com",
 	NumberLinksTotal:  0,
 	NumberLinksQueued: 0,
-	ExcludeReason:     "Didn't like it",
+	TimeQueued:        walker.NotYetCrawled,
 }
 
 var testDomain = console.DomainInfo{
@@ -236,7 +237,7 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	//
 	// Clear out the tables first
 	//
-	tables := []string{"links", "segments", "domain_info", "domains_to_crawl"}
+	tables := []string{"links", "segments", "domain_info"}
 	for _, table := range tables {
 		err := db.Query(fmt.Sprintf(`TRUNCATE %v`, table)).Exec()
 		if err != nil {
@@ -247,13 +248,13 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	//
 	// Insert some data
 	//
-	insertDomainInfo := `INSERT INTO domain_info (domain, excluded, exclude_reason, mirror_for) VALUES (?, ?, ?, ?)`
-	insertDomainToCrawl := `INSERT INTO domains_to_crawl (domain, crawler_token, priority, claim_time) VALUES (?, ?, ?, ?)`
-	insertSegment := `INSERT INTO segments (domain, subdomain, path, protocol) VALUES (?, ?, ?, ?)`
-	insertLink := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	insertDomainInfo := `INSERT INTO domain_info (dom) VALUES (?)`
+	insertDomainToCrawl := `INSERT INTO domain_info (dom, claim_tok, claim_time, dispatched) VALUES (?, ?, ?, true)`
+	insertSegment := `INSERT INTO segments (dom, subdom, path, proto) VALUES (?, ?, ?, ?)`
+	insertLink := `INSERT INTO links (dom, subdom, path, proto, time, stat, err, robot_ex) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	queries := []*gocql.Query{
-		db.Query(insertDomainInfo, "test.com", false, "", ""),
+		db.Query(insertDomainToCrawl, "test.com", gocql.UUID{}, testTime),
 		db.Query(insertLink, "test.com", "", "/page1.html", "http", walker.NotYetCrawled, 200, "", false),
 		db.Query(insertLink, "test.com", "", "/page2.html", "http", walker.NotYetCrawled, 200, "", false),
 		db.Query(insertLink, "test.com", "", "/page3.html", "http", walker.NotYetCrawled, 404, "", false),
@@ -264,17 +265,16 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 		db.Query(insertLink, "test.com", "sub", "/page7.html", "https", walker.NotYetCrawled, 200, "", false),
 		db.Query(insertLink, "test.com", "sub", "/page8.html", "https", walker.NotYetCrawled, 200, "", false),
 
-		db.Query(insertDomainToCrawl, "test.com", gocql.UUID{}, 0, testTime),
 		db.Query(insertSegment, "test.com", "", "/page1.html", "http"),
 		db.Query(insertSegment, "test.com", "", "/page2.html", "http"),
 
-		db.Query(insertDomainInfo, "foo.com", false, "", ""),
+		db.Query(insertDomainInfo, "foo.com"),
 		db.Query(insertLink, "foo.com", "sub", "/page1.html", "http", fooTime, 200, "", false),
 		db.Query(insertLink, "foo.com", "sub", "/page2.html", "http", fooTime, 200, "", false),
 
-		db.Query(insertDomainInfo, "bar.com", true, "Didn't like it", ""),
+		db.Query(insertDomainInfo, "bar.com"),
 
-		db.Query(insertDomainInfo, "baz.com", false, "", ""),
+		db.Query(insertDomainToCrawl, "baz.com", bazUuid, testTime),
 		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[0].CrawlTime, 200, "", false),
 		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[1].CrawlTime, 200, "", false),
 		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[2].CrawlTime, 200, "", false),
@@ -282,7 +282,6 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[4].CrawlTime, 200, "", false),
 		db.Query(insertLink, "baz.com", "sub", "/page1.html", "http", bazLinkHistoryInit[5].CrawlTime, 200, "", false),
 
-		db.Query(insertDomainToCrawl, "baz.com", bazUuid, 0, testTime),
 		db.Query(insertSegment, "baz.com", "sub", "page1.html", "http"),
 	}
 	for _, q := range queries {
@@ -295,7 +294,7 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	//
 	// Need to record the order that the test.com urls come off on
 	//
-	itr := db.Query("SELECT domain, subdomain, path, protocol FROM links WHERE domain = 'test.com'").Iter()
+	itr := db.Query("SELECT dom, subdom, path, proto FROM links WHERE dom = 'test.com'").Iter()
 	var domain, subdomain, path, protocol string
 	testComLinkOrder = nil
 	for itr.Scan(&domain, &subdomain, &path, &protocol) {
@@ -315,7 +314,7 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	//
 	// Need to record order for baz
 	//
-	itr = db.Query("SELECT crawl_time FROM links WHERE domain = 'baz.com'").Iter()
+	itr = db.Query("SELECT time FROM links WHERE dom = 'baz.com'").Iter()
 	var crawlTime time.Time
 	bazLinkHistoryOrder = nil
 	for itr.Scan(&crawlTime) {
@@ -402,11 +401,6 @@ func TestListDomains(t *testing.T) {
 			continue
 		}
 
-		// if !(len(dinfos) == test.limit || len(dinfos) == len(test.expected)) {
-		// 	t.Errorf("ListDomains length mismatch")
-		// 	continue
-		// }
-
 		if len(dinfos) != len(test.expected) {
 			t.Errorf("ListDomains length mismatch %v: got %d, expected %d", test.tag, len(dinfos), len(test.expected))
 			continue
@@ -418,10 +412,6 @@ func TestListDomains(t *testing.T) {
 
 		for i := range dinfos {
 			got := dinfos[i]
-			// exp, gotExp := expHash[got.Domain]
-			// if !gotExp {
-			// 	t.Errorf("ListDomains for tag '%s' Domain mismatch got %v, expected %v", test.tag, got.Domain, exp.Domain)
-			// }
 			exp := test.expected[i]
 			if got.NumberLinksTotal != exp.NumberLinksTotal {
 				t.Errorf("ListDomains with domain '%s' for tag '%s' NumberLinksTotal mismatch got %v, expected %v", got.Domain, test.tag, got.NumberLinksTotal, exp.NumberLinksTotal)

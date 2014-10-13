@@ -120,7 +120,7 @@ func spoofDataLong() {
 	//
 	// Clear out the tables first
 	//
-	tables := []string{"links", "segments", "domain_info", "domains_to_crawl"}
+	tables := []string{"links", "segments", "domain_info"}
 	for _, table := range tables {
 		err := db.Query(fmt.Sprintf(`TRUNCATE %v`, table)).Exec()
 		if err != nil {
@@ -130,14 +130,14 @@ func spoofDataLong() {
 
 	rand.Seed(42)
 
-	insertDomainInfo := `INSERT INTO domain_info (domain, excluded, exclude_reason, mirror_for) VALUES (?, ?, ?, ?)`
-	insertDomainToCrawl := `INSERT INTO domains_to_crawl (domain, crawler_token, priority, claim_time) VALUES (?, ?, ?, ?)`
-	insertSegment := `INSERT INTO segments (domain, subdomain, path, protocol) VALUES (?, ?, ?, ?)`
-	insertLink := `INSERT INTO links (domain, subdomain, path, protocol, crawl_time, status, error, robots_excluded) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+	insertDomainInfo := `INSERT INTO domain_info (dom) VALUES (?)`
+	insertDomainToCrawl := `INSERT INTO domain_info (dom, claim_tok, claim_time) VALUES (?, ?, ?)`
+	insertSegment := `INSERT INTO segments (dom, subdom, path, proto) VALUES (?, ?, ?, ?)`
+	insertLink := `INSERT INTO links (dom, subdom, path, proto, time, stat, err, robot_ex) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	for i := 0; i < 100; i++ {
 		domain := fmt.Sprintf("x%d.com", i)
-		err := db.Query(insertDomainInfo, domain, false, "", "").Exec()
+		err := db.Query(insertDomainInfo, domain).Exec()
 		if err != nil {
 			panic(err)
 		}
@@ -155,33 +155,17 @@ func spoofDataLong() {
 		}
 	}
 
-	excludeBC := []string{
-		"Don't like cut of jib",
-		"Think you smell funny",
-		"Didn't have permissions to access",
-		"Because I said so",
-	}
-
 	for i := 0; i < 10; i++ {
 		domain := fmt.Sprintf("y%d.com", i)
-		excluded := false
-		excludeReason := ""
-		if rand.Float32() < 0.1 {
-			excluded = true
-			excludeReason = excludeBC[rand.Intn(len(excludeBC))]
-		}
-		err := db.Query(insertDomainInfo, domain, excluded, excludeReason, "").Exec()
+		err := db.Query(insertDomainInfo, domain).Exec()
 		if err != nil {
 			panic(err)
-		}
-		if excluded {
-			continue
 		}
 
 		for i := 0; i < 100; i++ {
 			crawlTime := fakeCrawlTime()
 			status := fakeStatus()
-			excluded = false
+			excluded := false
 			if rand.Float32() < 0.1 {
 				status = http.StatusOK
 				crawlTime = walker.NotYetCrawled
@@ -204,7 +188,7 @@ func spoofDataLong() {
 
 	for i := 0; i < 10; i++ {
 		domain := fmt.Sprintf("h%d.com", i)
-		err := db.Query(insertDomainInfo, domain, false, "", "").Exec()
+		err := db.Query(insertDomainInfo, domain).Exec()
 		if err != nil {
 			panic(err)
 		}
@@ -228,17 +212,14 @@ func spoofDataLong() {
 	for i := 0; i < 10; i++ {
 		domain := fmt.Sprintf("t%d.com", i)
 		uuid := fakeUuid()
-		err := db.Query(insertDomainInfo, domain, false, "", "").Exec()
+		err = db.Query(insertDomainToCrawl, domain, uuid, time.Now()).Exec()
 		if err != nil {
 			panic(err)
 		}
+
 		for i := 0; i < 20; i++ {
 			page := fmt.Sprintf("/page%d.html", i)
 			err = db.Query(insertLink, domain, "link", page, "http", walker.NotYetCrawled, http.StatusOK, "", false).Exec()
-			if err != nil {
-				panic(err)
-			}
-			err = db.Query(insertDomainToCrawl, domain, uuid, 0, time.Now()).Exec()
 			if err != nil {
 				panic(err)
 			}
