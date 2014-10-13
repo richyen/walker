@@ -99,7 +99,7 @@ func SpoofData() {
 }
 
 func spoofDataLong() {
-	walker.Config.Cassandra.Keyspace = "walker_test"
+	walker.Config.Cassandra.Keyspace = "walker_spoof"
 	walker.Config.Cassandra.Hosts = []string{"localhost"}
 	walker.Config.Cassandra.ReplicationFactor = 1
 
