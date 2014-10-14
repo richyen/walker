@@ -16,7 +16,6 @@ import (
 	"github.com/unrolled/render"
 )
 
-var DS DataStore
 var zeroTime = time.Time{}
 var zeroUuid = gocql.UUID{}
 var timeFormat = "2006-01-02 15:04:05 -0700"

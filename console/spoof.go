@@ -58,7 +58,7 @@ func spoofDataLong() {
 	//
 	// Build data store
 	//
-	ds, err := NewCqlDataStore()
+	ds, err := NewCqlModel()
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
 	}

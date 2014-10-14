@@ -589,7 +589,7 @@ const DontSeedDomain = ""
 const DontSeedUrl = ""
 const DontSeedIndex = 0
 
-type DataStore interface {
+type Model interface {
         //INTERFACE NOTE: any place you see a seed variable that is a string/timestamp
         // that represents the last value of the previous call. limit is the max number
         // of results returned. seed and limit are used to implement pagination.
@@ -619,16 +619,18 @@ type DataStore interface {
         FindLink(links string) (*LinkInfo, error)
 }
 
+var DS Model
+
 //
 // Cassandra DataSTore
 //
-type CqlDataStore struct {
+type CqlModel struct {
         Cluster *gocql.ClusterConfig
         Db      *gocql.Session
 }
 
-func NewCqlDataStore() (*CqlDataStore, error) <span class="cov8" title="1">{
-        ds := new(CqlDataStore)
+func NewCqlModel() (*CqlModel, error) <span class="cov8" title="1">{
+        ds := new(CqlModel)
         ds.Cluster = gocql.NewCluster(walker.Config.Cassandra.Hosts...)
         ds.Cluster.Keyspace = walker.Config.Cassandra.Keyspace
         var err error
@@ -636,12 +638,12 @@ func NewCqlDataStore() (*CqlDataStore, error) <span class="cov8" title="1">{
         return ds, err
 }</span>
 
-func (ds *CqlDataStore) Close() <span class="cov8" title="1">{
+func (ds *CqlModel) Close() <span class="cov8" title="1">{
         ds.Db.Close()
 }</span>
 
 //NOTE: part of this is cribbed from walker.datastore.go. Code share?
-func (ds *CqlDataStore) addDomainIfNew(domain string) error <span class="cov8" title="1">{
+func (ds *CqlModel) addDomainIfNew(domain string) error <span class="cov8" title="1">{
         var count int
         err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE dom = ?`, domain).Scan(&amp;count)
         if err != nil </span><span class="cov0" title="0">{
@@ -660,7 +662,7 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error <span class="cov8" t
 
 //NOTE: InsertLinks should try to insert as much information as possible
 //return errors for things it can't handle
-func (ds *CqlDataStore) InsertLinks(links []string) []error <span class="cov8" title="1">{
+func (ds *CqlModel) InsertLinks(links []string) []error <span class="cov8" title="1">{
         //
         // Collect domains
         //
@@ -730,7 +732,7 @@ func (ds *CqlDataStore) InsertLinks(links []string) []error <span class="cov8" t
         <span class="cov8" title="1">return errList</span>
 }
 
-func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, error) <span class="cov8" title="1">{
+func (ds *CqlModel) countUniqueLinks(domain string, table string) (int, error) <span class="cov8" title="1">{
         db := ds.Db
         q := fmt.Sprintf("SELECT subdom, path, proto, time FROM %s WHERE dom = ?", table)
         itr := db.Query(q, domain).Iter()
@@ -749,7 +751,7 @@ func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, erro
         return len(found), err</span>
 }
 
-func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error <span class="cov8" title="1">{
+func (ds *CqlModel) annotateDomainInfo(dinfos []DomainInfo) error <span class="cov8" title="1">{
         //
         // Count Links
         //
@@ -775,7 +777,7 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error <span clas
         <span class="cov8" title="1">return nil</span>
 }
 
-func (ds *CqlDataStore) listDomainsImpl(seed string, limit int, working bool) ([]DomainInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) listDomainsImpl(seed string, limit int, working bool) ([]DomainInfo, error) <span class="cov8" title="1">{
         if limit &lt;= 0 </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
         }</span>
@@ -808,14 +810,14 @@ func (ds *CqlDataStore) listDomainsImpl(seed string, limit int, working bool) ([
         return dinfos, err</span>
 }
 
-func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) ListDomains(seed string, limit int) ([]DomainInfo, error) <span class="cov8" title="1">{
         if limit &lt;= 0 </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
         }</span>
         <span class="cov8" title="1">return ds.listDomainsImpl(seed, limit, false)</span>
 }
 
-func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error) <span class="cov8" title="1">{
         if limit &lt;= 0 </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
         }</span>
@@ -823,7 +825,7 @@ func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]Doma
 }
 
 //                itr = db.Query("SELECT domain, claim_tok, claim_time FROM domain_info WHERE dispatched = true AND TOKEN(domain) &gt; TOKEN(?) LIMIT ?", seed, limit).Iter()
-func (ds *CqlDataStore) FindDomain(domain string) (*DomainInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) FindDomain(domain string) (*DomainInfo, error) <span class="cov8" title="1">{
         db := ds.Db
         itr := db.Query("SELECT claim_tok, claim_time FROM domain_info WHERE dom = ?", domain).Iter()
         var claim_tok gocql.UUID
@@ -879,7 +881,7 @@ type rememberTimes struct {
 }
 
 //collectLinkInfos populates a []LinkInfo list given a cassandra iterator
-func (ds *CqlDataStore) collectLinkInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) collectLinkInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) <span class="cov8" title="1">{
         var domain, subdomain, path, protocol, anerror string
         var crawlTime time.Time
         var robotsExcluded bool
@@ -929,7 +931,7 @@ type queryEntry struct {
         args  []interface{}
 }
 
-func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error) <span class="cov8" title="1">{
         if limit &lt;= 0 </span><span class="cov0" title="0">{
                 return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
         }</span>
@@ -1004,7 +1006,7 @@ func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]L
         <span class="cov8" title="1">return linfos, nil</span>
 }
 
-func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error) <span class="cov8" title="1">{
+func (ds *CqlModel) ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error) <span class="cov8" title="1">{
         if limit &lt;= 0 </span><span class="cov0" title="0">{
                 return nil, seedIndex, fmt.Errorf("Bad value for limit parameter %d", limit)
         }</span>
@@ -1049,7 +1051,7 @@ func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedIndex int, limit 
         return linfos, seedIndex + len(linfos), err</span>
 }
 
-func (ds *CqlDataStore) FindLink(link string) (*LinkInfo, error) <span class="cov8" title="1">{
+func (ds *CqlModel) FindLink(link string) (*LinkInfo, error) <span class="cov8" title="1">{
         db := ds.Db
         u, err := walker.ParseURL(link)
         if err != nil </span><span class="cov0" title="0">{
@@ -1100,7 +1102,6 @@ import (
         "github.com/unrolled/render"
 )
 
-var DS DataStore
 var zeroTime = time.Time{}
 var zeroUuid = gocql.UUID{}
 var timeFormat = "2006-01-02 15:04:05 -0700"
@@ -1267,7 +1268,7 @@ func spoofDataLong() <span class="cov8" title="1">{
         //
         // Build data store
         //
-        <span class="cov8" title="1">ds, err := NewCqlDataStore()
+        <span class="cov8" title="1">ds, err := NewCqlModel()
         if err != nil </span><span class="cov0" title="0">{
                 panic(fmt.Errorf("Failed to start data source: %v", err))
         }</span>

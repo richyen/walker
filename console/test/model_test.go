@@ -215,10 +215,10 @@ type insertTest struct {
 //
 var initdb sync.Once
 
-func getDs(t *testing.T) *console.CqlDataStore {
+func getDs(t *testing.T) *console.CqlModel {
 	modifyConfigDataSource()
 
-	ds, err := console.NewCqlDataStore()
+	ds, err := console.NewCqlModel()
 	if err != nil {
 		panic(err)
 	}

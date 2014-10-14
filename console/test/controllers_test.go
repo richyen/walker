@@ -37,7 +37,7 @@ func spoofData() {
 	modifyConfigControllers()
 
 	console.SpoofData()
-	ds, err := console.NewCqlDataStore()
+	ds, err := console.NewCqlModel()
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
 	}

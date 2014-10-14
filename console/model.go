@@ -56,7 +56,7 @@ const DontSeedDomain = ""
 const DontSeedUrl = ""
 const DontSeedIndex = 0
 
-type DataStore interface {
+type Model interface {
 	//INTERFACE NOTE: any place you see a seed variable that is a string/timestamp
 	// that represents the last value of the previous call. limit is the max number
 	// of results returned. seed and limit are used to implement pagination.
@@ -86,16 +86,18 @@ type DataStore interface {
 	FindLink(links string) (*LinkInfo, error)
 }
 
+var DS Model
+
 //
 // Cassandra DataSTore
 //
-type CqlDataStore struct {
+type CqlModel struct {
 	Cluster *gocql.ClusterConfig
 	Db      *gocql.Session
 }
 
-func NewCqlDataStore() (*CqlDataStore, error) {
-	ds := new(CqlDataStore)
+func NewCqlModel() (*CqlModel, error) {
+	ds := new(CqlModel)
 	ds.Cluster = gocql.NewCluster(walker.Config.Cassandra.Hosts...)
 	ds.Cluster.Keyspace = walker.Config.Cassandra.Keyspace
 	var err error
@@ -103,12 +105,12 @@ func NewCqlDataStore() (*CqlDataStore, error) {
 	return ds, err
 }
 
-func (ds *CqlDataStore) Close() {
+func (ds *CqlModel) Close() {
 	ds.Db.Close()
 }
 
 //NOTE: part of this is cribbed from walker.datastore.go. Code share?
-func (ds *CqlDataStore) addDomainIfNew(domain string) error {
+func (ds *CqlModel) addDomainIfNew(domain string) error {
 	var count int
 	err := ds.Db.Query(`SELECT COUNT(*) FROM domain_info WHERE dom = ?`, domain).Scan(&count)
 	if err != nil {
@@ -127,7 +129,7 @@ func (ds *CqlDataStore) addDomainIfNew(domain string) error {
 
 //NOTE: InsertLinks should try to insert as much information as possible
 //return errors for things it can't handle
-func (ds *CqlDataStore) InsertLinks(links []string) []error {
+func (ds *CqlModel) InsertLinks(links []string) []error {
 	//
 	// Collect domains
 	//
@@ -197,7 +199,7 @@ func (ds *CqlDataStore) InsertLinks(links []string) []error {
 	return errList
 }
 
-func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, error) {
+func (ds *CqlModel) countUniqueLinks(domain string, table string) (int, error) {
 	db := ds.Db
 	q := fmt.Sprintf("SELECT subdom, path, proto, time FROM %s WHERE dom = ?", table)
 	itr := db.Query(q, domain).Iter()
@@ -216,7 +218,7 @@ func (ds *CqlDataStore) countUniqueLinks(domain string, table string) (int, erro
 	return len(found), err
 }
 
-func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
+func (ds *CqlModel) annotateDomainInfo(dinfos []DomainInfo) error {
 	//
 	// Count Links
 	//
@@ -242,7 +244,7 @@ func (ds *CqlDataStore) annotateDomainInfo(dinfos []DomainInfo) error {
 	return nil
 }
 
-func (ds *CqlDataStore) listDomainsImpl(seed string, limit int, working bool) ([]DomainInfo, error) {
+func (ds *CqlModel) listDomainsImpl(seed string, limit int, working bool) ([]DomainInfo, error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
 	}
@@ -275,14 +277,14 @@ func (ds *CqlDataStore) listDomainsImpl(seed string, limit int, working bool) ([
 	return dinfos, err
 }
 
-func (ds *CqlDataStore) ListDomains(seed string, limit int) ([]DomainInfo, error) {
+func (ds *CqlModel) ListDomains(seed string, limit int) ([]DomainInfo, error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
 	}
 	return ds.listDomainsImpl(seed, limit, false)
 }
 
-func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error) {
+func (ds *CqlModel) ListWorkingDomains(seedDomain string, limit int) ([]DomainInfo, error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
 	}
@@ -290,7 +292,7 @@ func (ds *CqlDataStore) ListWorkingDomains(seedDomain string, limit int) ([]Doma
 }
 
 //		itr = db.Query("SELECT domain, claim_tok, claim_time FROM domain_info WHERE dispatched = true AND TOKEN(domain) > TOKEN(?) LIMIT ?", seed, limit).Iter()
-func (ds *CqlDataStore) FindDomain(domain string) (*DomainInfo, error) {
+func (ds *CqlModel) FindDomain(domain string) (*DomainInfo, error) {
 	db := ds.Db
 	itr := db.Query("SELECT claim_tok, claim_time FROM domain_info WHERE dom = ?", domain).Iter()
 	var claim_tok gocql.UUID
@@ -346,7 +348,7 @@ type rememberTimes struct {
 }
 
 //collectLinkInfos populates a []LinkInfo list given a cassandra iterator
-func (ds *CqlDataStore) collectLinkInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) {
+func (ds *CqlModel) collectLinkInfos(linfos []LinkInfo, rtimes map[string]rememberTimes, itr *gocql.Iter, limit int) ([]LinkInfo, error) {
 	var domain, subdomain, path, protocol, anerror string
 	var crawlTime time.Time
 	var robotsExcluded bool
@@ -396,7 +398,7 @@ type queryEntry struct {
 	args  []interface{}
 }
 
-func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error) {
+func (ds *CqlModel) ListLinks(domain string, seedUrl string, limit int) ([]LinkInfo, error) {
 	if limit <= 0 {
 		return nil, fmt.Errorf("Bad value for limit parameter %d", limit)
 	}
@@ -471,7 +473,7 @@ func (ds *CqlDataStore) ListLinks(domain string, seedUrl string, limit int) ([]L
 	return linfos, nil
 }
 
-func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error) {
+func (ds *CqlModel) ListLinkHistorical(linkUrl string, seedIndex int, limit int) ([]LinkInfo, int, error) {
 	if limit <= 0 {
 		return nil, seedIndex, fmt.Errorf("Bad value for limit parameter %d", limit)
 	}
@@ -516,7 +518,7 @@ func (ds *CqlDataStore) ListLinkHistorical(linkUrl string, seedIndex int, limit 
 	return linfos, seedIndex + len(linfos), err
 }
 
-func (ds *CqlDataStore) FindLink(link string) (*LinkInfo, error) {
+func (ds *CqlModel) FindLink(link string) (*LinkInfo, error) {
 	db := ds.Db
 	u, err := walker.ParseURL(link)
 	if err != nil {
