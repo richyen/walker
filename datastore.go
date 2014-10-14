@@ -65,6 +65,9 @@ type CassandraDatastore struct {
 
 	// A cache for domains we've already verified exist in domain_info
 	addedDomains *lrucache.LRUCache
+
+	// This is a unique UUID for the entire crawler.
+	crawlerUuid gocql.UUID
 }
 
 func GetCassandraConfig() *gocql.ClusterConfig {
@@ -83,6 +86,17 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 		return nil, fmt.Errorf("Failed to create cassandra datastore: %v", err)
 	}
 	ds.addedDomains = lrucache.New(Config.AddedDomainsCacheSize)
+
+	// NOTE: We stick the crawlerUuid onto the datastore object. This isn't
+	// the best thing to do logically: where the UUID should be global to the
+	// app. But since there is only one datastore per crawler, this'll work for
+	// the forceable future.
+	u, err := gocql.RandomUUID()
+	if err != nil {
+		return ds, err
+	}
+	ds.crawlerUuid = u
+
 	return ds, nil
 }
 
@@ -115,14 +129,13 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 			//TODO: use a per-crawler uuid
 			log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
 			start = time.Now()
-			crawluuid, _ := gocql.RandomUUID()
 			err := ds.db.Query(`UPDATE domain_info SET claim_tok = ?, claim_time = ?
 								WHERE dom = ?`,
-				crawluuid, time.Now(), domain).Exec()
+				ds.crawlerUuid, time.Now(), domain).Exec()
 			if err != nil {
 				log4go.Error("Failed to claim segment %v: %v", domain, err)
 			} else {
-				log4go.Debug("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
+				log4go.Debug("Claimed segment %v with token %v in %v", domain, ds.crawlerUuid, time.Since(start))
 				ds.domains = append(ds.domains, domain)
 			}
 		}
