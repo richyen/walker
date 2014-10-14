@@ -264,6 +264,30 @@ func TestListDomainsWeb(t *testing.T) {
 		t.Fatalf("[.container table tbody tr td a] Count mismatch got %d, expected greater than %d ", count, minCount)
 	}
 }
+func TestListDomainsSeeded(t *testing.T) {
+	spoofData()
+	doc, body, status := callController("http://localhost:3000/list/h5.com", "", "/list/{seed}", console.ListDomainsController)
+	if status != http.StatusOK {
+		t.Errorf("TestListDomains bad status code got %d, expected %d", status, http.StatusOK)
+		t.Log(body)
+		t.FailNow()
+	}
+	sub := doc.Find(".container table tbody tr td a")
+	if sub.Size() < 1 {
+		t.Fatalf("[.container table tbody tr td a] Bad size expected > 0")
+	}
+	sub = sub.First()
+	link, linkOk := sub.Attr("href")
+	if !linkOk {
+		t.Fatalf("[.container table tbody tr td a] Failed to find href")
+		return
+	}
+	elink := "/links/x74.com"
+	if elink != link {
+		t.Fatalf("[.container table tbody tr td a] Link mismatch: got '%v' expected '%v'", link, elink)
+		return
+	}
+}
 
 func TestListLinksWeb(t *testing.T) {
 	spoofData()
@@ -734,6 +758,47 @@ func TestFindDomains(t *testing.T) {
 		count++
 	})
 
+	//
+	// Lets submit an empty request
+	//
+	rawBody = "  "
+	doc, body, status = callController("http://localhost:3000/find", rawBody, "/find", console.FindDomainController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		t.Log(body)
+		t.FailNow()
+	}
+
+	sub := doc.Find(".info-li")
+	if sub.Size() < 1 {
+		t.Fatalf("[.info-li] Expected to find element")
+	}
+	text := strings.TrimSpace(sub.Text())
+	etext := "Failed to specify any targets"
+	if text != etext {
+		t.Fatalf("[.info-li] Error message mismatch: got '%s', expected '%s'", text, etext)
+	}
+
+	//
+	// Variation on an empty request
+	//
+	rawBody = "targets=%0D%0A"
+	doc, body, status = callController("http://localhost:3000/find", rawBody, "/find", console.FindDomainController)
+	if status != http.StatusOK {
+		t.Errorf("TestFindDomains bad status code got %d, expected %d", status, http.StatusOK)
+		t.Log(body)
+		t.FailNow()
+	}
+
+	sub = doc.Find(".info-li")
+	if sub.Size() < 1 {
+		t.Fatalf("[.info-li] Expected to find element")
+	}
+	text = strings.TrimSpace(sub.Text())
+	etext = "Failed to specify any targets"
+	if text != etext {
+		t.Fatalf("[.info-li] Error message mismatch: got '%s', expected '%s'", text, etext)
+	}
 }
 
 func TestFindLinks(t *testing.T) {

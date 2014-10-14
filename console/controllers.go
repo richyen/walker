@@ -96,7 +96,10 @@ func FindDomainController(w http.ResponseWriter, req *http.Request) {
 	targetAll, ok := req.Form["targets"]
 	if !ok || len(targetAll) < 1 {
 		log4go.Error("Targets was not defined correctly %v", targetAll)
-		mp := map[string]interface{}{}
+		mp := map[string]interface{}{
+			"HasInfoMessage": true,
+			"InfoMessage":    []string{"Failed to specify any targets"},
+		}
 		Render.HTML(w, http.StatusOK, "find", mp)
 		return
 	}
@@ -114,7 +117,7 @@ func FindDomainController(w http.ResponseWriter, req *http.Request) {
 	if len(targets) <= 0 {
 		mp := map[string]interface{}{
 			"HasInfoMessage": true,
-			"InfoMessage":    "Failed to specify any targets",
+			"InfoMessage":    []string{"Failed to specify any targets"},
 		}
 		Render.HTML(w, http.StatusOK, "find", mp)
 		return

@@ -125,7 +125,7 @@ func ListDomainsController(w http.ResponseWriter, req *http.Request) <span class
         if seed == "" </span><span class="cov8" title="1">{
                 seed = DontSeedDomain
                 prevButtonClass = "disabled"
-        }</span> <span class="cov0" title="0">else {
+        }</span> <span class="cov8" title="1">else {
                 var err error
                 seed, err = url.QueryUnescape(seed)
                 if err != nil </span><span class="cov0" title="0">{
@@ -170,9 +170,12 @@ func FindDomainController(w http.ResponseWriter, req *http.Request) <span class=
         }</span>
 
         <span class="cov8" title="1">targetAll, ok := req.Form["targets"]
-        if !ok || len(targetAll) &lt; 1 </span><span class="cov0" title="0">{
+        if !ok || len(targetAll) &lt; 1 </span><span class="cov8" title="1">{
                 log4go.Error("Targets was not defined correctly %v", targetAll)
-                mp := map[string]interface{}{}
+                mp := map[string]interface{}{
+                        "HasInfoMessage": true,
+                        "InfoMessage":    []string{"Failed to specify any targets"},
+                }
                 Render.HTML(w, http.StatusOK, "find", mp)
                 return
         }</span>
@@ -187,10 +190,10 @@ func FindDomainController(w http.ResponseWriter, req *http.Request) <span class=
                 }</span>
         }
 
-        <span class="cov8" title="1">if len(targets) &lt;= 0 </span><span class="cov0" title="0">{
+        <span class="cov8" title="1">if len(targets) &lt;= 0 </span><span class="cov8" title="1">{
                 mp := map[string]interface{}{
                         "HasInfoMessage": true,
-                        "InfoMessage":    "Failed to specify any targets",
+                        "InfoMessage":    []string{"Failed to specify any targets"},
                 }
                 Render.HTML(w, http.StatusOK, "find", mp)
                 return
