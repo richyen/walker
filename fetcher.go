@@ -33,7 +33,10 @@ func init() {
 // FetchResults contains all relevant context and return data from an
 // individual fetch. Handlers receive this to process results.
 type FetchResults struct {
-	// URL that was fetched; will always be populated
+
+	// URL that was requested; will always be populated. If this URL redirects,
+	// RedirectedFrom will contain a list of all requested URLS. And the content
+	// of this struct will be from the last element of RedirectedFrom.
 	URL *URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
@@ -52,6 +55,11 @@ type FetchResults struct {
 	// True if we did not request this link because it is excluded by
 	// robots.txt rules
 	ExcludedByRobots bool
+
+	// A list of redirects that brought this FetchResults. Note
+	// the page at RedirectedFrom[n] redirected to a new page
+	// stored at RedirectedFrom[n+1].
+	RedirectedFrom []*URL
 }
 
 // URL is the walker URL object, which embeds *url.URL but has extra data and
@@ -228,11 +236,12 @@ func (fm *FetchManager) Stop() {
 // start up. It will effectively manage one goroutine, crawling one host at a
 // time, claiming a new host when it has exhausted the previous one.
 type fetcher struct {
-	fm         *FetchManager
-	host       string
-	httpclient *http.Client
-	robots     *robotstxt.Group
-	crawldelay time.Duration
+	fm           *FetchManager
+	host         string
+	httpclient   *http.Client
+	redirectFrom []*URL
+	robots       *robotstxt.Group
+	crawldelay   time.Duration
 
 	// quit signals the fetcher to stop
 	quit chan struct{}
@@ -247,7 +256,8 @@ func newFetcher(fm *FetchManager) *fetcher {
 	f := new(fetcher)
 	f.fm = fm
 	f.httpclient = &http.Client{
-		Transport: fm.Transport,
+		Transport:     fm.Transport,
+		CheckRedirect: f.checkRedirect,
 	}
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})
@@ -305,7 +315,7 @@ func (f *fetcher) start() {
 			time.Sleep(f.crawldelay)
 
 			fr.FetchTime = time.Now()
-			fr.Response, fr.FetchError = f.fetch(link)
+			fr.Response, fr.RedirectedFrom, fr.FetchError = f.fetch(link)
 			if fr.FetchError != nil {
 				log4go.Debug("Error fetching %v: %v", link, fr.FetchError)
 				f.fm.Datastore.StoreURLFetchResults(fr)
@@ -376,7 +386,7 @@ func (f *fetcher) fetchRobots(host string) {
 			Path:   "robots.txt",
 		},
 	}
-	res, err := f.fetch(u)
+	res, _, err := f.fetch(u)
 	if err != nil {
 		log4go.Debug("Could not fetch %v, assuming there is no robots.txt (error: %v)", u, err)
 		f.robots = nil
@@ -392,21 +402,24 @@ func (f *fetcher) fetchRobots(host string) {
 	f.robots = robots.FindGroup(Config.UserAgent)
 }
 
-func (f *fetcher) fetch(u *URL) (*http.Response, error) {
+func (f *fetcher) fetch(u *URL) (*http.Response, []*URL, error) {
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create new request object for %v): %v", u, err)
+		return nil, nil, fmt.Errorf("Failed to create new request object for %v): %v", u, err)
 	}
 
 	req.Header.Set("User-Agent", Config.UserAgent)
 	req.Header.Set("Accept", strings.Join(Config.AcceptFormats, ","))
 
 	log4go.Debug("Sending request: %+v", req)
+	f.redirectFrom = nil
 	res, err := f.httpclient.Do(req)
+	redFrom := f.redirectFrom
+	f.redirectFrom = nil
 	if err != nil {
-		return nil, err
+		return nil, redFrom, err
 	}
-	return res, nil
+	return res, redFrom, nil
 }
 
 // checkForBlacklisting returns true if this site is blacklisted or should be
@@ -439,6 +452,16 @@ func (f *fetcher) checkForBlacklisting(host string) bool {
 		return true
 	}
 	return false
+}
+
+// This function is used by http.Client to gather redirect URLs
+func (f *fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
+	// on first call, via will have 1 element, store the url
+	if len(via) == 1 {
+		f.redirectFrom = append(f.redirectFrom, &URL{URL: via[0].URL})
+	}
+	f.redirectFrom = append(f.redirectFrom, &URL{URL: req.URL})
+	return nil
 }
 
 // getLinks parses the response for links, doing it's best with bad HTML.
