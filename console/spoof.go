@@ -25,23 +25,44 @@ func SpoofData() {
 }
 
 func spoofDataLong() {
+	if walker.Config.Cassandra.Keyspace == "walker" {
+		panic("Not allowed to spoof the walker keyspace")
+	}
+
+	//
+	// Drop the keyspace if it exists
+	//
+	{
+		cluster := gocql.NewCluster(walker.Config.Cassandra.Hosts...)
+		//cluster.Keyspace = walker.Config.Cassandra.Keyspace
+		db, err := cluster.CreateSession()
+		if err != nil {
+			panic(err)
+		}
+
+		err = db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
+		if err != nil {
+			panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
+		}
+		db.Close()
+	}
+
+	//
+	// Build the new schema
+	//
+	err := walker.CreateCassandraSchema()
+	if err != nil {
+		panic(err)
+	}
+
+	//
+	// Build data store
+	//
 	ds, err := NewCqlDataStore()
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
 	}
 	db := ds.Db
-
-	if walker.Config.Cassandra.Keyspace == "walker" {
-		panic("Not allowed to spoof the walker keyspace")
-	}
-	err = db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
-	if err != nil {
-		panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
-	}
-	err = walker.CreateCassandraSchema()
-	if err != nil {
-		panic(err)
-	}
 
 	//
 	// Clear out the tables first

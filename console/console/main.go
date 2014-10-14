@@ -7,11 +7,19 @@ import (
 	"code.google.com/p/log4go"
 	"github.com/codegangsta/negroni"
 	"github.com/gorilla/mux"
+	"github.com/iParadigms/walker"
 	"github.com/iParadigms/walker/console"
 )
 
+func modifyConfigMain() {
+	walker.Config.Cassandra.Keyspace = "walker_spoofed"
+	walker.Config.Cassandra.Hosts = []string{"localhost"}
+	walker.Config.Cassandra.ReplicationFactor = 1
+}
+
 func main() {
 	if true {
+		modifyConfigMain()
 		console.SpoofData()
 	}
 

@@ -4,7 +4,6 @@
 package console
 
 import (
-	"fmt"
 	"html/template"
 	"net/http"
 	"os"
@@ -101,52 +100,15 @@ func BuildRender(verbose bool) {
 		},
 	})
 }
-func replyFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) {
-	if len(keyValues)%2 != 0 {
-		panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: keyValues does not have even number of elements"))
-	}
-	mp := map[string]interface{}{}
-	for i := 0; i < len(keyValues); i = i + 2 {
-		protokey := keyValues[i]
-		key, keyok := protokey.(string)
-		if !keyok {
-			panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: found a non-string in keyValues"))
-		}
-		value := keyValues[i+1]
-		mp[key] = value
-	}
-	Render.HTML(w, status, template, mp)
-}
-
-// func reply(w http.ResponseWriter, template string, keyValues ...interface{}) {
-// 	replyFull(w, template, http.StatusOK, keyValues...)
-// }
 
 func replyServerError(w http.ResponseWriter, err error) {
 	log4go.Error("Rendering 500: %v", err)
-	replyFull(w, "serverError", http.StatusInternalServerError,
-		"anErrorHappend", true,
-		"theError", err.Error())
-}
-
-// func replyWithInfo(w http.ResponseWriter, template string, message string) {
-// 	replyFull(w, template, http.StatusOK,
-// 		"HasInfoMessage", true,
-// 		"InfoMessage", []string{message})
-// }
-
-func replyWithError(w http.ResponseWriter, template string, message string) {
-	log4go.Info("Rendered user error message %v", message)
-	replyFull(w, template, http.StatusOK,
-		"HasErrorMessage", true,
-		"ErrorMessage", []string{message})
-}
-
-func replyWithErrorList(w http.ResponseWriter, template string, messages []string) {
-	log4go.Info("Rendered user error messages %v", messages)
-	replyFull(w, template, http.StatusOK,
-		"HasErrorMessage", true,
-		"ErrorMessage", messages)
+	mp := map[string]interface{}{
+		"anErrorHappend": true,
+		"theError":       err.Error(),
+	}
+	Render.HTML(w, http.StatusInternalServerError, "serverError", mp)
+	return
 }
 
 // Some Utilities

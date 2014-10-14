@@ -1080,53 +1080,6 @@ func (ds *CqlDataStore) FindLink(link string) (*LinkInfo, error) <span class="co
                 return &amp;linfos[0], nil
         }</span>
 }
-
-/*
-Add Link:
-    * Can insert any number of newline separated links. That list will be parsed, the union of all the domains in the list of links will be entered into the correct tables. And the links will be entered and queued up to be searched.
-
-Search on Domain (see Rendered for each Domain):
-    * Can list all domains stored in cassandra
-    * Can list all currently being crawled domains
-
-Rendered for each Domain
-    * domain string [example.com]
-    * excluded reason: [robots.txt excluded], possibly NULL
-    * last time queued: time when this domain was last picked up by a crawler, NULL if never queued
-    * UUID of queued: the UUID of the crawler currently working on this domain, or NULL if not currently queued
-    * Number of Links (how many links in 'links' table for this domain)
-    * Number of Links queued to process (how many links in the 'segments' table for this domain)
-    * Can click to list links (see Rendered for each Link)
-    * Can do subdomain search on links  (see Rendered for each Link)
-
-
-Rendered for each Link:
-    * url: http://foo.bar.com/niffler.txt
-    * status: the HTTP status code of the last GET
-    * error: the error that occurred during the last GET operation, or NULL if no error.
-    * robots excluded: boolean indicates if the link was excluded by robots.txt
-    * A link to the history of this link. A list of each attempt to GET this link.
-
-A note on what it means to 'list':
-    Below any place we say "list" we mean limited list. We'll always only render N elements to page. So when we "list domains" we'll only list, say, 50 domains on a page. We'll paginate as needed for longer lists.
-
-*/
-
-/*
-From DAN:
-
-By crawl status I just meant any general aggregate stats we already have for the given domain (or searched links).
-
-For example a crawl history, (*) meaning the list of links we've crawled and when we crawled them, (*) what their signature was, etc.
-
-basically I should be able to type in a domain and see a summary of (*) how many links we've crawled, (*) how many we haven't yet crawled.
-
-I should be able to search for a specific link and see (*) how many times we crawled it and (*) what the result was each time, including when we initially parsed it.
-
-Hopefully that makes some sense; these are the things we'd want to show but how to do it and what we are able to show now is going to require a bit of creativity. Some things, for example signature (meaning 'fp' in the database, fingerprint) is not something we are calculating yet, so not yet useful in the console.
-
-
-*/
 </pre>
 		
 		<pre class="file" id="file2" style="display: none">/*
@@ -1135,7 +1088,6 @@ Hopefully that makes some sense; these are the things we'd want to show but how 
 package console
 
 import (
-        "fmt"
         "html/template"
         "net/http"
         "os"
@@ -1232,52 +1184,15 @@ func BuildRender(verbose bool) <span class="cov8" title="1">{
                 },
         })</span>
 }
-func replyFull(w http.ResponseWriter, template string, status int, keyValues ...interface{}) <span class="cov0" title="0">{
-        if len(keyValues)%2 != 0 </span><span class="cov0" title="0">{
-                panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: keyValues does not have even number of elements"))
-        }</span>
-        <span class="cov0" title="0">mp := map[string]interface{}{}
-        for i := 0; i &lt; len(keyValues); i = i + 2 </span><span class="cov0" title="0">{
-                protokey := keyValues[i]
-                key, keyok := protokey.(string)
-                if !keyok </span><span class="cov0" title="0">{
-                        panic(fmt.Errorf("INTERNAL ERROR: poorly used reply: found a non-string in keyValues"))
-                }</span>
-                <span class="cov0" title="0">value := keyValues[i+1]
-                mp[key] = value</span>
-        }
-        <span class="cov0" title="0">Render.HTML(w, status, template, mp)</span>
-}
-
-// func reply(w http.ResponseWriter, template string, keyValues ...interface{}) {
-//         replyFull(w, template, http.StatusOK, keyValues...)
-// }
 
 func replyServerError(w http.ResponseWriter, err error) <span class="cov0" title="0">{
         log4go.Error("Rendering 500: %v", err)
-        replyFull(w, "serverError", http.StatusInternalServerError,
-                "anErrorHappend", true,
-                "theError", err.Error())
-}</span>
-
-// func replyWithInfo(w http.ResponseWriter, template string, message string) {
-//         replyFull(w, template, http.StatusOK,
-//                 "HasInfoMessage", true,
-//                 "InfoMessage", []string{message})
-// }
-
-func replyWithError(w http.ResponseWriter, template string, message string) <span class="cov0" title="0">{
-        log4go.Info("Rendered user error message %v", message)
-        replyFull(w, template, http.StatusOK,
-                "HasErrorMessage", true,
-                "ErrorMessage", []string{message})
-}</span>
-
-func replyWithErrorList(w http.ResponseWriter, template string, messages []string) <span class="cov0" title="0">{
-        log4go.Info("Rendered user error messages %v", messages)
-        replyFull(w, template, http.StatusOK,
-                "HasErrorMessage", true,
-                "ErrorMessage", messages)
+        mp := map[string]interface{}{
+                "anErrorHappend": true,
+                "theError":       err.Error(),
+        }
+        Render.HTML(w, http.StatusInternalServerError, "serverError", mp)
+        return
 }</span>
 
 // Some Utilities
@@ -1319,28 +1234,49 @@ func SpoofData() <span class="cov8" title="1">{
 }
 
 func spoofDataLong() <span class="cov8" title="1">{
-        ds, err := NewCqlDataStore()
-        if err != nil </span><span class="cov0" title="0">{
-                panic(fmt.Errorf("Failed to start data source: %v", err))
-        }</span>
-        <span class="cov8" title="1">db := ds.Db
-
         if walker.Config.Cassandra.Keyspace == "walker" </span><span class="cov0" title="0">{
                 panic("Not allowed to spoof the walker keyspace")
         }</span>
-        <span class="cov8" title="1">err = db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
-        if err != nil </span><span class="cov0" title="0">{
-                panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
-        }</span>
-        <span class="cov8" title="1">err = walker.CreateCassandraSchema()
+
+        //
+        // Drop the keyspace if it exists
+        //
+        <span class="cov8" title="1">{
+                cluster := gocql.NewCluster(walker.Config.Cassandra.Hosts...)
+                //cluster.Keyspace = walker.Config.Cassandra.Keyspace
+                db, err := cluster.CreateSession()
+                if err != nil </span><span class="cov0" title="0">{
+                        panic(err)
+                }</span>
+
+                <span class="cov8" title="1">err = db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
+                if err != nil </span><span class="cov0" title="0">{
+                        panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
+                }</span>
+                <span class="cov8" title="1">db.Close()</span>
+        }
+
+        //
+        // Build the new schema
+        //
+        <span class="cov8" title="1">err := walker.CreateCassandraSchema()
         if err != nil </span><span class="cov0" title="0">{
                 panic(err)
         }</span>
 
         //
+        // Build data store
+        //
+        <span class="cov8" title="1">ds, err := NewCqlDataStore()
+        if err != nil </span><span class="cov0" title="0">{
+                panic(fmt.Errorf("Failed to start data source: %v", err))
+        }</span>
+        <span class="cov8" title="1">db := ds.Db
+
+        //
         // Clear out the tables first
         //
-        <span class="cov8" title="1">tables := []string{"links", "segments", "domain_info"}
+        tables := []string{"links", "segments", "domain_info"}
         for _, table := range tables </span><span class="cov8" title="1">{
                 err := db.Query(fmt.Sprintf(`TRUNCATE %v`, table)).Exec()
                 if err != nil </span><span class="cov0" title="0">{
