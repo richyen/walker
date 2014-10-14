@@ -1,6 +1,6 @@
 /*
 	This file has some temporary code designed to populate a cassandra datastore
-	with some test data.
+	with some test data. The code isn't a picture of beauty, but it won't live that long.
 */
 
 package console
@@ -16,80 +16,6 @@ import (
 	"github.com/iParadigms/walker"
 )
 
-func fakeCrawlTime() time.Time {
-	t := time.Now().AddDate(-rand.Intn(2), -rand.Intn(6), -rand.Intn(7))
-	return t
-}
-
-var statusSelect []int = []int{
-	http.StatusContinue,
-	http.StatusSwitchingProtocols,
-	http.StatusOK,
-	http.StatusCreated,
-	http.StatusAccepted,
-	http.StatusNonAuthoritativeInfo,
-	http.StatusNoContent,
-	http.StatusResetContent,
-	http.StatusPartialContent,
-	http.StatusMultipleChoices,
-	http.StatusMovedPermanently,
-	http.StatusFound,
-	http.StatusSeeOther,
-	http.StatusNotModified,
-	http.StatusUseProxy,
-	http.StatusTemporaryRedirect,
-	http.StatusBadRequest,
-	http.StatusUnauthorized,
-	http.StatusPaymentRequired,
-	http.StatusForbidden,
-	http.StatusNotFound,
-	http.StatusMethodNotAllowed,
-	http.StatusNotAcceptable,
-	http.StatusProxyAuthRequired,
-	http.StatusRequestTimeout,
-	http.StatusConflict,
-	http.StatusGone,
-	http.StatusLengthRequired,
-	http.StatusPreconditionFailed,
-	http.StatusRequestEntityTooLarge,
-	http.StatusRequestURITooLong,
-	http.StatusUnsupportedMediaType,
-	http.StatusRequestedRangeNotSatisfiable,
-	http.StatusExpectationFailed,
-	http.StatusInternalServerError,
-	http.StatusNotImplemented,
-	http.StatusBadGateway,
-	http.StatusServiceUnavailable,
-	http.StatusGatewayTimeout,
-	http.StatusHTTPVersionNotSupported,
-}
-
-func fakeStatus() int {
-	if rand.Float32() < 0.8 {
-		return http.StatusOK
-	} else {
-		return statusSelect[rand.Intn(len(statusSelect))]
-	}
-}
-
-var initUuids sync.Once
-var selectUuids []gocql.UUID
-
-func fakeUuid() gocql.UUID {
-	initUuids.Do(func() {
-		for i := 0; i < 5; i++ {
-			u, err := gocql.RandomUUID()
-			if err != nil {
-				panic(err)
-			}
-			selectUuids = append(selectUuids, u)
-		}
-	})
-
-	return selectUuids[rand.Intn(len(selectUuids))]
-}
-
-var schemaCreate sync.Once
 var spoofRun sync.Once
 
 func SpoofData() {
@@ -99,23 +25,23 @@ func SpoofData() {
 }
 
 func spoofDataLong() {
-	walker.Config.Cassandra.Keyspace = "walker_spoof"
-	walker.Config.Cassandra.Hosts = []string{"localhost"}
-	walker.Config.Cassandra.ReplicationFactor = 1
-
-	schemaCreate.Do(func() {
-		BuildRender()
-		err := walker.CreateCassandraSchema()
-		if err != nil {
-			panic(err)
-		}
-	})
-
 	ds, err := NewCqlDataStore()
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
 	}
 	db := ds.Db
+
+	if walker.Config.Cassandra.Keyspace == "walker" {
+		panic("Not allowed to spoof the walker keyspace")
+	}
+	err = db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
+	if err != nil {
+		panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
+	}
+	err = walker.CreateCassandraSchema()
+	if err != nil {
+		panic(err)
+	}
 
 	//
 	// Clear out the tables first
@@ -232,4 +158,77 @@ func spoofDataLong() {
 	}
 
 	return
+}
+
+func fakeCrawlTime() time.Time {
+	t := time.Now().AddDate(-rand.Intn(2), -rand.Intn(6), -rand.Intn(7))
+	return t
+}
+
+var statusSelect []int = []int{
+	http.StatusContinue,
+	http.StatusSwitchingProtocols,
+	http.StatusOK,
+	http.StatusCreated,
+	http.StatusAccepted,
+	http.StatusNonAuthoritativeInfo,
+	http.StatusNoContent,
+	http.StatusResetContent,
+	http.StatusPartialContent,
+	http.StatusMultipleChoices,
+	http.StatusMovedPermanently,
+	http.StatusFound,
+	http.StatusSeeOther,
+	http.StatusNotModified,
+	http.StatusUseProxy,
+	http.StatusTemporaryRedirect,
+	http.StatusBadRequest,
+	http.StatusUnauthorized,
+	http.StatusPaymentRequired,
+	http.StatusForbidden,
+	http.StatusNotFound,
+	http.StatusMethodNotAllowed,
+	http.StatusNotAcceptable,
+	http.StatusProxyAuthRequired,
+	http.StatusRequestTimeout,
+	http.StatusConflict,
+	http.StatusGone,
+	http.StatusLengthRequired,
+	http.StatusPreconditionFailed,
+	http.StatusRequestEntityTooLarge,
+	http.StatusRequestURITooLong,
+	http.StatusUnsupportedMediaType,
+	http.StatusRequestedRangeNotSatisfiable,
+	http.StatusExpectationFailed,
+	http.StatusInternalServerError,
+	http.StatusNotImplemented,
+	http.StatusBadGateway,
+	http.StatusServiceUnavailable,
+	http.StatusGatewayTimeout,
+	http.StatusHTTPVersionNotSupported,
+}
+
+func fakeStatus() int {
+	if rand.Float32() < 0.8 {
+		return http.StatusOK
+	} else {
+		return statusSelect[rand.Intn(len(statusSelect))]
+	}
+}
+
+var initUuids sync.Once
+var selectUuids []gocql.UUID
+
+func fakeUuid() gocql.UUID {
+	initUuids.Do(func() {
+		for i := 0; i < 5; i++ {
+			u, err := gocql.RandomUUID()
+			if err != nil {
+				panic(err)
+			}
+			selectUuids = append(selectUuids, u)
+		}
+	})
+
+	return selectUuids[rand.Intn(len(selectUuids))]
 }

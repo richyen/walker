@@ -23,7 +23,7 @@ func main() {
 	console.DS = ds
 	defer ds.Close()
 
-	console.BuildRender()
+	console.BuildRender(true)
 
 	router := mux.NewRouter()
 	routes := console.Routes()

@@ -16,23 +16,39 @@ import (
 	"github.com/iParadigms/walker/console"
 )
 
-func spoofData() {
-	// WHen tests run they are in console/test but they need to find
-	// templates in console/templates.
+//
+// Config
+//
+func modifyConfigControllers() {
+	walker.Config.Cassandra.Keyspace = "walker_controllers"
+	walker.Config.Cassandra.Hosts = []string{"localhost"}
+	walker.Config.Cassandra.ReplicationFactor = 1
 	walker.Config.Console.TemplateDirectory = "../templates"
+}
 
+//
+// Generate Fixtures
+//
+func spoofData() {
 	if console.DS != nil {
 		console.DS.Close()
 		console.DS = nil
 	}
+	modifyConfigControllers()
+
 	console.SpoofData()
 	ds, err := console.NewCqlDataStore()
 	if err != nil {
 		panic(fmt.Errorf("Failed to start data source: %v", err))
 	}
 	console.DS = ds
+
+	console.BuildRender(false)
 }
 
+//
+// Call a controller and return a Document
+//
 func callController(url string, body string, urlPattern string, controller func(w http.ResponseWriter, req *http.Request)) (*goquery.Document, string, int) {
 	//
 	// Set your method based on the body input
@@ -72,6 +88,9 @@ func callController(url string, body string, urlPattern string, controller func(
 	return doc, output, status
 }
 
+//
+// The tests
+//
 func TestLayout(t *testing.T) {
 	spoofData()
 	doc, body, status := callController("http://localhost:3000/", "", "/", console.HomeController)
@@ -90,7 +109,7 @@ func TestLayout(t *testing.T) {
 	}
 	sub := doc.Find("nav ul li a")
 	if sub.Size() != 4 {
-		t.Fatalf("[nav ul li a] Bad size got %d, expected %d", sub.Size(), 4)
+		t.Fatalf("[nav ul li a] Bad size: got %d, expected %d", sub.Size(), 4)
 		return
 	}
 	sub.Each(func(index int, sel *goquery.Selection) {
@@ -108,7 +127,7 @@ func TestLayout(t *testing.T) {
 		}
 
 		if found != text {
-			t.Errorf("[nav ul li a] Failed to find text '%s' for link %s", text, link)
+			t.Errorf("[nav ul li a] Text mismatch for %s: got '%s', expected '%s'", link, text, found)
 			return
 		}
 
@@ -122,10 +141,11 @@ func TestLayout(t *testing.T) {
 		"/css/bootstrap.css": true,
 		"/css/custom.css":    true,
 	}
-	if doc.Find("head link").Size() <= 0 {
-		t.Errorf("[nav ul li a] Failed to find anything")
+	sub = doc.Find("head link")
+	if sub.Size() <= 0 {
+		t.Errorf("[nav ul li a] Failed to find any links")
 	}
-	doc.Find("head link").Each(func(index int, sel *goquery.Selection) {
+	sub.Each(func(index int, sel *goquery.Selection) {
 		link, linkOk := sel.Attr("href")
 		if !linkOk {
 			t.Errorf("[head link] Failed to find href")
@@ -146,7 +166,11 @@ func TestLayout(t *testing.T) {
 		"/js/jquery-2.1.1.js": true,
 		"/js/bootstrap.js":    true,
 	}
-	doc.Find("head script").Each(func(index int, sel *goquery.Selection) {
+	sub = doc.Find("head script")
+	if sub.Size() != len(jsLinks) {
+		t.Fatalf("[head script] Size mismatch: got %d, expected %d", sub.Size(), len(jsLinks))
+	}
+	sub.Each(func(index int, sel *goquery.Selection) {
 		link, linkOk := sel.Attr("src")
 		if !linkOk {
 			t.Errorf("[head script] Failed to find src")

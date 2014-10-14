@@ -75,12 +75,14 @@ func fuuidFunc(u gocql.UUID) string {
 
 var Render *render.Render
 
-func BuildRender() {
+func BuildRender(verbose bool) {
 	pwd, err := os.Getwd()
 	if err != nil {
 		pwd = "UNKNOWN"
 	}
-	log4go.Info("Setting templates directory to '%s' [pwd=%s]", walker.Config.Console.TemplateDirectory, pwd)
+	if verbose {
+		log4go.Info("Setting templates directory to '%s' [pwd=%s]", walker.Config.Console.TemplateDirectory, pwd)
+	}
 	Render = render.New(render.Options{
 		Directory:     walker.Config.Console.TemplateDirectory,
 		Layout:        "layout",

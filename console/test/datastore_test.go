@@ -13,6 +13,15 @@ import (
 )
 
 //
+// Config alteration right up front
+//
+func modifyConfigDataSource() {
+	walker.Config.Cassandra.Keyspace = "walker_test_model"
+	walker.Config.Cassandra.Hosts = []string{"localhost"}
+	walker.Config.Cassandra.ReplicationFactor = 1
+}
+
+//
 // Some global data
 //
 var fooTime = time.Now().AddDate(0, 0, -1)
@@ -207,32 +216,29 @@ type insertTest struct {
 var initdb sync.Once
 
 func getDs(t *testing.T) *console.CqlDataStore {
-	//XXX: More elegant way to do this? Right now I want to make sure
-	// it's set
-	walker.Config.Cassandra.Keyspace = "walker_test"
-	walker.Config.Cassandra.Hosts = []string{"localhost"}
-	walker.Config.Cassandra.ReplicationFactor = 1
-
-	initdb.Do(func() {
-		err := walker.CreateCassandraSchema()
-		if err != nil {
-			t.Fatalf(err.Error())
-		}
-	})
+	modifyConfigDataSource()
 
 	ds, err := console.NewCqlDataStore()
 	if err != nil {
 		panic(err)
 	}
-
-	//
-	ds.Db.SetConsistency(gocql.One)
-
-	return ds
-}
-
-func populate(t *testing.T, ds *console.CqlDataStore) {
 	db := ds.Db
+
+	initdb.Do(func() {
+
+		// Just want to make sure no one makes a mistake with this code
+		if walker.Config.Cassandra.Keyspace == "walker" {
+			panic("Not allowed to spoof the walker keyspace")
+		}
+		err := db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
+		if err != nil {
+			panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
+		}
+		err = walker.CreateCassandraSchema()
+		if err != nil {
+			t.Fatalf(err.Error())
+		}
+	})
 
 	//
 	// Clear out the tables first
@@ -306,7 +312,7 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 		}
 		testComLinkOrder = append(testComLinkOrder, linfo)
 	}
-	err := itr.Close()
+	err = itr.Close()
 	if err != nil {
 		panic(fmt.Errorf("testComLinkOrder iterator error: %v", err))
 	}
@@ -340,6 +346,8 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 	if err != nil {
 		panic(fmt.Errorf("bazLinkHistoryOrder iterator error: %v", err))
 	}
+
+	return ds
 }
 
 //
@@ -347,7 +355,6 @@ func populate(t *testing.T, ds *console.CqlDataStore) {
 //
 func TestListDomains(t *testing.T) {
 	store := getDs(t)
-	populate(t, store)
 
 	tests := []domainTest{
 		domainTest{
@@ -406,10 +413,6 @@ func TestListDomains(t *testing.T) {
 			continue
 		}
 
-		//NOTE: we ARE NOT assuming any order from cassandra. The order I observed was neither insert order, nor
-		//lexical order. Oh goodness!! The order I observed was "foo.com", "bar.com", "test.com"
-		//expHash := dlist2dhash(test.expected)
-
 		for i := range dinfos {
 			got := dinfos[i]
 			exp := test.expected[i]
@@ -435,7 +438,7 @@ func TestListDomains(t *testing.T) {
 
 func TestFindDomain(t *testing.T) {
 	store := getDs(t)
-	populate(t, store)
+
 	tests := []findTest{
 		findTest{
 			tag:      "Basic",
@@ -455,6 +458,7 @@ func TestFindDomain(t *testing.T) {
 			expected: nil,
 		},
 	}
+
 	for _, test := range tests {
 		dinfoPtr, err := store.FindDomain(test.domain)
 		if err != nil {
@@ -469,7 +473,7 @@ func TestFindDomain(t *testing.T) {
 		} else if dinfoPtr != nil && expPtr == nil {
 			t.Errorf("FindDomain %s got non-nil return, expected nil return", test.tag)
 		} else if dinfoPtr == nil && expPtr == nil {
-			// everything is cool
+			// everything is cool. Expected nil pointers and got em
 			continue
 		}
 
@@ -500,7 +504,6 @@ func TestFindDomain(t *testing.T) {
 
 func TestListWorkingDomains(t *testing.T) {
 	store := getDs(t)
-	populate(t, store)
 
 	tests := []domainTest{
 		domainTest{
@@ -570,7 +573,7 @@ func TestListWorkingDomains(t *testing.T) {
 
 func TestListLinks(t *testing.T) {
 	store := getDs(t)
-	populate(t, store)
+
 	tests := []linkTest{
 		linkTest{
 			tag:      "Basic Pull",
@@ -669,7 +672,7 @@ func TestListLinks(t *testing.T) {
 }
 func TestListLinkHistorical(t *testing.T) {
 	store := getDs(t)
-	populate(t, store)
+
 	tests := []linkTest{
 		linkTest{
 			tag:      "full read",
@@ -746,7 +749,6 @@ func TestListLinkHistorical(t *testing.T) {
 
 func TestInsertLinks(t *testing.T) {
 	store := getDs(t)
-	populate(t, store)
 
 	tests := []insertTest{
 		insertTest{
