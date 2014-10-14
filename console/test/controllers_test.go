@@ -143,7 +143,7 @@ func TestLayout(t *testing.T) {
 	}
 	sub = doc.Find("head link")
 	if sub.Size() <= 0 {
-		t.Errorf("[nav ul li a] Failed to find any links")
+		t.Errorf("[head link] Failed to find any links")
 	}
 	sub.Each(func(index int, sel *goquery.Selection) {
 		link, linkOk := sel.Attr("href")
