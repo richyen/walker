@@ -35,9 +35,14 @@ func init() {
 type FetchResults struct {
 
 	// URL that was requested; will always be populated. If this URL redirects,
-	// RedirectedFrom will contain a list of all requested URLS. And the content
-	// of this struct will be from the last element of RedirectedFrom.
+	// RedirectedFrom will contain a list of all requested URLS.
 	URL *URL
+
+	// A list of redirects. During this request cycle, the first request URL is stored
+	// in URL. The second request (first redirect) is stored in RedirectedFrom[0]. And
+	// the Nth request (N-1 th redirect) will be stored in RedirectedFrom[N-2],
+	// and this is the URL that furnished the http.Response.
+	RedirectedFrom []*URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
 	// true. Response.Body may not be the same object the HTTP request actually
@@ -55,11 +60,6 @@ type FetchResults struct {
 	// True if we did not request this link because it is excluded by
 	// robots.txt rules
 	ExcludedByRobots bool
-
-	// A list of redirects that brought this FetchResults. Note
-	// the page at RedirectedFrom[n] redirected to a new page
-	// stored at RedirectedFrom[n+1].
-	RedirectedFrom []*URL
 }
 
 // URL is the walker URL object, which embeds *url.URL but has extra data and
@@ -236,12 +236,11 @@ func (fm *FetchManager) Stop() {
 // start up. It will effectively manage one goroutine, crawling one host at a
 // time, claiming a new host when it has exhausted the previous one.
 type fetcher struct {
-	fm           *FetchManager
-	host         string
-	httpclient   *http.Client
-	redirectFrom []*URL
-	robots       *robotstxt.Group
-	crawldelay   time.Duration
+	fm         *FetchManager
+	host       string
+	httpclient *http.Client
+	robots     *robotstxt.Group
+	crawldelay time.Duration
 
 	// quit signals the fetcher to stop
 	quit chan struct{}
@@ -256,8 +255,7 @@ func newFetcher(fm *FetchManager) *fetcher {
 	f := new(fetcher)
 	f.fm = fm
 	f.httpclient = &http.Client{
-		Transport:     fm.Transport,
-		CheckRedirect: f.checkRedirect,
+		Transport: fm.Transport,
 	}
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})
@@ -412,14 +410,18 @@ func (f *fetcher) fetch(u *URL) (*http.Response, []*URL, error) {
 	req.Header.Set("Accept", strings.Join(Config.AcceptFormats, ","))
 
 	log4go.Debug("Sending request: %+v", req)
-	f.redirectFrom = nil
-	res, err := f.httpclient.Do(req)
-	redFrom := f.redirectFrom
-	f.redirectFrom = nil
-	if err != nil {
-		return nil, redFrom, err
+
+	var redirectedFrom []*URL
+	f.httpclient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		redirectedFrom = append(redirectedFrom, &URL{URL: req.URL})
+		return nil
 	}
-	return res, redFrom, nil
+
+	res, err := f.httpclient.Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	return res, redirectedFrom, nil
 }
 
 // checkForBlacklisting returns true if this site is blacklisted or should be
@@ -452,16 +454,6 @@ func (f *fetcher) checkForBlacklisting(host string) bool {
 		return true
 	}
 	return false
-}
-
-// This function is used by http.Client to gather redirect URLs
-func (f *fetcher) checkRedirect(req *http.Request, via []*http.Request) error {
-	// on first call, via will have 1 element, store the url
-	if len(via) == 1 {
-		f.redirectFrom = append(f.redirectFrom, &URL{URL: via[0].URL})
-	}
-	f.redirectFrom = append(f.redirectFrom, &URL{URL: req.URL})
-	return nil
 }
 
 // getLinks parses the response for links, doing it's best with bad HTML.

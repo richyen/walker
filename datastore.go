@@ -183,6 +183,8 @@ type dbfield struct {
 func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 	url := fr.URL
 	if len(fr.RedirectedFrom) > 0 {
+		// Remember that the actual response of this FetchResults is from
+		// the url at the end of RedirectedFrom
 		url = fr.RedirectedFrom[len(fr.RedirectedFrom)-1]
 	}
 
@@ -226,10 +228,12 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 	}
 
 	if len(fr.RedirectedFrom) > 0 {
+		// Only trick with this is that fr.URL redirected to RedirectedFrom[0], after that
+		// RedirectedFrom[n] redirected to RedirectedFrom[n+1]
 		rf := fr.RedirectedFrom
-		for i := len(rf) - 2; i >= 0; i-- {
-			front := rf[i+1]
-			back := rf[i]
+		back := fr.URL
+		for i := 0; i < len(rf); i++ {
+			front := rf[i]
 			err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time, redto_url) VALUES (?, ?, ?, ?, ?, ?)`,
 				back.ToplevelDomainPlusOne(), back.Subdomain(),
 				back.RequestURI(), back.Scheme, fr.FetchTime,
@@ -237,7 +241,7 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 			if err != nil {
 				log4go.Error("Failed to insert redirected link %s -> %s: %v", back.String(), front.String(), err)
 			}
-			front = back
+			back = front
 		}
 	}
 }
