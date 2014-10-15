@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
 
@@ -279,63 +278,6 @@ func TestFetcherCreatesTransport(t *testing.T) {
 
 	ds.AssertExpectations(t)
 	h.AssertExpectations(t)
-}
-
-func response404() *http.Response {
-	return &http.Response{
-		Status:        "404",
-		StatusCode:    404,
-		Proto:         "HTTP/1.0",
-		ProtoMajor:    1,
-		ProtoMinor:    0,
-		Header:        http.Header{"Content-Type": []string{"text/html"}},
-		Body:          ioutil.NopCloser(strings.NewReader("")),
-		ContentLength: -1,
-	}
-}
-
-func response307(link string) *http.Response {
-	return &http.Response{
-		Status:     "307",
-		StatusCode: 307,
-		Proto:      "HTTP/1.0",
-		ProtoMajor: 1,
-		ProtoMinor: 0,
-		Header:     http.Header{"Location": []string{link}, "Content-Type": []string{"text/html"}},
-		Body:       ioutil.NopCloser(strings.NewReader("")),
-		// "HTTP/1.0 404 Not Found\n" +
-		// 	fmt.Sprintf("Location: %s\n", link)),
-		ContentLength: -1,
-	}
-}
-
-func response200() *http.Response {
-	return &http.Response{
-		Status:     "200 OK",
-		StatusCode: 200,
-		Proto:      "HTTP/1.0",
-		ProtoMajor: 1,
-		ProtoMinor: 0,
-		Header:     http.Header{"Content-Type": []string{"text/html"}},
-		Body:       ioutil.NopCloser(strings.NewReader(html_body_nolinks)),
-		// "HTTP/1.0 200 Ok\n" +
-		// 	"Content-Type: text/html\n" +
-		// 	"\r\n\r\n" +
-		//html_body_nolinks),
-		ContentLength: -1,
-	}
-}
-
-type mapRoundTrip struct {
-	responses map[string]*http.Response
-}
-
-func (mrt *mapRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
-	res, resOk := mrt.responses[req.URL.String()]
-	if !resOk {
-		return response404(), nil
-	}
-	return res, nil
 }
 
 func TestRedirects(t *testing.T) {

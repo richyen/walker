@@ -298,7 +298,6 @@ func (f *fetcher) start() {
 		log4go.Info("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
 
 		for link := range f.fm.Datastore.LinksForHost(f.host) {
-			log4go.Error("PETE: crawling %v", link)
 			//TODO: check <-f.quit and clean up appropriately
 
 			fr := &FetchResults{URL: link}
@@ -319,9 +318,6 @@ func (f *fetcher) start() {
 				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
-			log4go.Error("PETE: Got result for %v: %v", link, fr.RedirectedFrom)
-			log4go.Error("PETE: isHTML=%v isHandleable=%v", isHTML(fr.Response), isHandleable(fr.Response, f.fm.acceptFormats))
-
 			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
 
 			canSearch := isHTML(fr.Response)
