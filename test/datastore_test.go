@@ -438,3 +438,57 @@ func TestURL(t *testing.T) {
 		t.Errorf("Expected CreateURL to return %v\nBut got: %v", wurl1, created)
 	}
 }
+
+func TestAddingRedirects(t *testing.T) {
+	db := getDB(t)
+	ds := getDS(t)
+
+	link := func(index int) string {
+		return fmt.Sprintf("http://subdom.dom.com/page%d.html", index)
+	}
+
+	fr := walker.FetchResults{
+		URL:            parse(link(1)),
+		RedirectedFrom: []*walker.URL{parse(link(2)), parse(link(3))},
+		FetchTime:      time.Unix(0, 0),
+	}
+
+	ds.StoreURLFetchResults(&fr)
+
+	type expect struct {
+		link  string
+		redto string
+	}
+
+	expected := []expect{
+		expect{link: link(1), redto: link(2)},
+		expect{link: link(2), redto: link(3)},
+		expect{link: link(3), redto: ""},
+	}
+
+	for _, exp := range expected {
+		url := parse(exp.link)
+
+		itr := db.Query("SELECT redto_url FROM links WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?",
+			url.ToplevelDomainPlusOne(),
+			url.Subdomain(),
+			url.RequestURI(),
+			url.Scheme).Iter()
+		var redto string
+		if !itr.Scan(&redto) {
+			t.Errorf("Failed to find link %q", exp.link)
+			continue
+		}
+
+		err := itr.Close()
+		if err != nil {
+			t.Errorf("Iterator returned error %v", err)
+			continue
+		}
+
+		if redto != exp.redto {
+			t.Errorf("Redirect mismatch: got %q, expected %q", redto, exp.redto)
+		}
+	}
+
+}

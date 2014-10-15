@@ -74,13 +74,22 @@ func response307(link string) *http.Response {
 
 func response200() *http.Response {
 	return &http.Response{
-		Status:        "200 OK",
-		StatusCode:    200,
-		Proto:         "HTTP/1.0",
-		ProtoMajor:    1,
-		ProtoMinor:    0,
-		Header:        http.Header{"Content-Type": []string{"text/html"}},
-		Body:          ioutil.NopCloser(strings.NewReader(html_body_nolinks)),
+		Status:     "200 OK",
+		StatusCode: 200,
+		Proto:      "HTTP/1.0",
+		ProtoMajor: 1,
+		ProtoMinor: 0,
+		Header:     http.Header{"Content-Type": []string{"text/html"}},
+		Body: ioutil.NopCloser(strings.NewReader(
+			`<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>No Links</title>
+</head>
+<div id="menu">
+</div>
+</html>`)),
 		ContentLength: -1,
 	}
 }
