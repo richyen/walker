@@ -57,23 +57,6 @@ const html_test_links string = `<!DOCTYPE html>
 </div>
 </html>`
 
-const html_with_href_space = `<!DOCTYPE html>
-<html>
-<head>
-<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-<title>Test links page</title>
-</head>
-
-<div id="menu">
-	<a href=" relative-dir/">link</a>
-	<a href=" relative-page/page.html">link</a>
-	<a href=" /abs-relative-dir/">link</a>
-	<a href=" /abs-relative-page/page.html">link</a>
-	<a href=" https://other.org/abs-dir/">link</a>
-	<a href=" https://other.org/abs-page/page.html">link</a>
-</div>
-</html>`
-
 func TestBasicFetchManagerRun(t *testing.T) {
 	ds := &MockDatastore{}
 	ds.On("ClaimNewHost").Return("norobots.com").Once()
@@ -298,4 +281,100 @@ func TestFetcherCreatesTransport(t *testing.T) {
 
 func TestHrefWithSpace(t *testing.T) {
 
+	testPage := "http://t.com/page1.html"
+	const html_with_href_space = `<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Test links page</title>
+</head>
+
+<div id="menu">
+	<a href=" relative-dir/">link</a>
+	<a href=" relative-page/page.html">link</a>
+	<a href=" /abs-relative-dir/">link</a>
+	<a href=" /abs-relative-page/page.html">link</a>
+	<a href=" https://other.org/abs-dir/">link</a>
+	<a href=" https://other.org/abs-page/page.html">link</a>
+</div>
+</html>`
+
+	ds := &MockDatastore{}
+	ds.On("ClaimNewHost").Return("t.com").Once()
+	ds.On("LinksForHost", "t.com").Return([]*walker.URL{
+		parse(testPage),
+	})
+	ds.On("UnclaimHost", "t.com").Return()
+	ds.On("ClaimNewHost").Return("")
+
+	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
+	ds.On("StoreParsedURL",
+		mock.AnythingOfType("*walker.URL"),
+		mock.AnythingOfType("*walker.FetchResults")).Return()
+
+	h := &MockHandler{}
+	h.On("HandleResponse", mock.Anything).Return()
+
+	rs, err := NewMockRemoteServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs.SetResponse(testPage, &MockResponse{
+		ContentType: "text/html",
+		Body:        html_with_href_space,
+	})
+
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+		Transport: GetFakeTransport(),
+	}
+
+	go manager.Start()
+	time.Sleep(time.Second * 2)
+	manager.Stop()
+
+	rs.Stop()
+
+	foundTCom := false
+	for _, call := range h.Calls {
+		fr := call.Arguments.Get(0).(*walker.FetchResults)
+		if fr.URL.String() == testPage {
+			foundTCom = true
+			break
+		}
+	}
+	if !foundTCom {
+		t.Fatalf("Failed to find pushed link 'http://t.com/page1.html'")
+	}
+
+	expected := map[string]bool{
+		"http://t.com/relative-dir/":               true,
+		"http://t.com/relative-page/page.html":     true,
+		"http://t.com/abs-relative-dir/":           true,
+		"http://t.com/abs-relative-page/page.html": true,
+		"https://other.org/abs-dir/":               true,
+		"https://other.org/abs-page/page.html":     true,
+	}
+
+	for _, call := range ds.Calls {
+		if call.Method == "StoreParsedURL" {
+			u := call.Arguments.Get(0).(*walker.URL)
+			fr := call.Arguments.Get(1).(*walker.FetchResults)
+			if fr.URL.String() == testPage {
+				if expected[u.String()] {
+					delete(expected, u.String())
+				} else {
+					t.Errorf("StoreParsedURL mismatch found unexpected link %q", u.String())
+				}
+			}
+		}
+	}
+
+	for link, _ := range expected {
+		t.Errorf("StoreParsedURL didn't find link %q", link)
+	}
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
 }
