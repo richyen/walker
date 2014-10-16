@@ -84,7 +84,7 @@ type WalkerConfig struct {
 
 	Console struct {
 		TemplateDirectory string `yaml:template_directory`
-	}
+	} `yaml:"console"`
 }
 
 // SetDefaultConfig resets the Config object to default values, regardless of
@@ -107,7 +107,7 @@ func SetDefaultConfig() {
 	Config.Cassandra.Keyspace = "walker"
 	Config.Cassandra.ReplicationFactor = 3
 
-	Config.Console.TemplateDirectory = "templates"
+	Config.Console.TemplateDirectory = "console/templates"
 }
 
 // ReadConfigFile sets a new path to find the walker yaml config file and

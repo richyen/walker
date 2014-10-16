@@ -59,3 +59,8 @@
 #    keyspace: "walker"
 #    replication_factor: 3
 
+## Console specific config
+#console:
+#    template_directory: console/templates
+
+
