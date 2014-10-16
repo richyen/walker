@@ -513,7 +513,7 @@ func parseAnchorAttrs(tokenizer *html.Tokenizer, links []*URL) []*URL {
 	for {
 		key, val, moreAttr := tokenizer.TagAttr()
 		if bytes.Compare(key, []byte("href")) == 0 {
-			u, err := ParseURL(string(val))
+			u, err := ParseURL(strings.TrimSpace(string(val)))
 			if err == nil {
 				links = append(links, u)
 			}
