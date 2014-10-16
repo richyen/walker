@@ -87,10 +87,6 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 	}
 	ds.addedDomains = lrucache.New(Config.AddedDomainsCacheSize)
 
-	// NOTE: We stick the crawlerUuid onto the datastore object. This isn't
-	// the best thing to do logically: where the UUID should be global to the
-	// app. But since there is only one datastore per crawler, this'll work for
-	// the forceable future.
 	u, err := gocql.RandomUUID()
 	if err != nil {
 		return ds, err
