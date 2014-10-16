@@ -33,8 +33,16 @@ func init() {
 // FetchResults contains all relevant context and return data from an
 // individual fetch. Handlers receive this to process results.
 type FetchResults struct {
-	// URL that was fetched; will always be populated
+
+	// URL that was requested; will always be populated. If this URL redirects,
+	// RedirectedFrom will contain a list of all requested URLS.
 	URL *URL
+
+	// A list of redirects. During this request cycle, the first request URL is stored
+	// in URL. The second request (first redirect) is stored in RedirectedFrom[0]. And
+	// the Nth request (N-1 th redirect) will be stored in RedirectedFrom[N-2],
+	// and this is the URL that furnished the http.Response.
+	RedirectedFrom []*URL
 
 	// Response object; nil if there was a FetchError or ExcludedByRobots is
 	// true. Response.Body may not be the same object the HTTP request actually
@@ -290,7 +298,6 @@ func (f *fetcher) start() {
 		log4go.Info("Crawling host: %v with crawl delay %v", f.host, f.crawldelay)
 
 		for link := range f.fm.Datastore.LinksForHost(f.host) {
-
 			//TODO: check <-f.quit and clean up appropriately
 
 			fr := &FetchResults{URL: link}
@@ -305,13 +312,12 @@ func (f *fetcher) start() {
 			time.Sleep(f.crawldelay)
 
 			fr.FetchTime = time.Now()
-			fr.Response, fr.FetchError = f.fetch(link)
+			fr.Response, fr.RedirectedFrom, fr.FetchError = f.fetch(link)
 			if fr.FetchError != nil {
 				log4go.Debug("Error fetching %v: %v", link, fr.FetchError)
 				f.fm.Datastore.StoreURLFetchResults(fr)
 				continue
 			}
-
 			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
 
 			canSearch := isHTML(fr.Response)
@@ -376,7 +382,7 @@ func (f *fetcher) fetchRobots(host string) {
 			Path:   "robots.txt",
 		},
 	}
-	res, err := f.fetch(u)
+	res, _, err := f.fetch(u)
 	if err != nil {
 		log4go.Debug("Could not fetch %v, assuming there is no robots.txt (error: %v)", u, err)
 		f.robots = nil
@@ -392,21 +398,28 @@ func (f *fetcher) fetchRobots(host string) {
 	f.robots = robots.FindGroup(Config.UserAgent)
 }
 
-func (f *fetcher) fetch(u *URL) (*http.Response, error) {
+func (f *fetcher) fetch(u *URL) (*http.Response, []*URL, error) {
 	req, err := http.NewRequest("GET", u.String(), nil)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create new request object for %v): %v", u, err)
+		return nil, nil, fmt.Errorf("Failed to create new request object for %v): %v", u, err)
 	}
 
 	req.Header.Set("User-Agent", Config.UserAgent)
 	req.Header.Set("Accept", strings.Join(Config.AcceptFormats, ","))
 
 	log4go.Debug("Sending request: %+v", req)
+
+	var redirectedFrom []*URL
+	f.httpclient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		redirectedFrom = append(redirectedFrom, &URL{URL: req.URL})
+		return nil
+	}
+
 	res, err := f.httpclient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return res, nil
+	return res, redirectedFrom, nil
 }
 
 // checkForBlacklisting returns true if this site is blacklisted or should be
