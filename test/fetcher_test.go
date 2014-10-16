@@ -57,6 +57,23 @@ const html_test_links string = `<!DOCTYPE html>
 </div>
 </html>`
 
+const html_with_href_space = `<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Test links page</title>
+</head>
+
+<div id="menu">
+	<a href=" relative-dir/">link</a>
+	<a href=" relative-page/page.html">link</a>
+	<a href=" /abs-relative-dir/">link</a>
+	<a href=" /abs-relative-page/page.html">link</a>
+	<a href=" https://other.org/abs-dir/">link</a>
+	<a href=" https://other.org/abs-page/page.html">link</a>
+</div>
+</html>`
+
 func TestBasicFetchManagerRun(t *testing.T) {
 	ds := &MockDatastore{}
 	ds.On("ClaimNewHost").Return("norobots.com").Once()
@@ -277,4 +294,8 @@ func TestFetcherCreatesTransport(t *testing.T) {
 
 	ds.AssertExpectations(t)
 	h.AssertExpectations(t)
+}
+
+func TestHrefWithSpace(t *testing.T) {
+
 }
