@@ -331,4 +331,7 @@ func TestRedirects(t *testing.T) {
 	if fr.RedirectedFrom[1].String() != link(3) {
 		t.Errorf("RedirectedFrom[0] mismatch, got %q, expected %q", fr.RedirectedFrom[1].String(), link(3))
 	}
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
 }

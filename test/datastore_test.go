@@ -455,15 +455,13 @@ func TestAddingRedirects(t *testing.T) {
 
 	ds.StoreURLFetchResults(&fr)
 
-	type expect struct {
+	expected := []struct {
 		link  string
 		redto string
-	}
-
-	expected := []expect{
-		expect{link: link(1), redto: link(2)},
-		expect{link: link(2), redto: link(3)},
-		expect{link: link(3), redto: ""},
+	}{
+		{link: link(1), redto: link(2)},
+		{link: link(2), redto: link(3)},
+		{link: link(3), redto: ""},
 	}
 
 	for _, exp := range expected {
