@@ -479,3 +479,55 @@ func TestURLTLD(t *testing.T) {
 		}
 	}
 }
+
+func TestAddingRedirects(t *testing.T) {
+	db := getDB(t)
+	ds := getDS(t)
+
+	link := func(index int) string {
+		return fmt.Sprintf("http://subdom.dom.com/page%d.html", index)
+	}
+
+	fr := walker.FetchResults{
+		URL:            parse(link(1)),
+		RedirectedFrom: []*walker.URL{parse(link(2)), parse(link(3))},
+		FetchTime:      time.Unix(0, 0),
+	}
+
+	ds.StoreURLFetchResults(&fr)
+
+	expected := []struct {
+		link  string
+		redto string
+	}{
+		{link: link(1), redto: link(2)},
+		{link: link(2), redto: link(3)},
+		{link: link(3), redto: ""},
+	}
+
+	for _, exp := range expected {
+		url := parse(exp.link)
+
+		dom, subdom, _ := url.TLDPlusOneAndSubdomain()
+		itr := db.Query("SELECT redto_url FROM links WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?",
+			dom,
+			subdom,
+			url.RequestURI(),
+			url.Scheme).Iter()
+		var redto string
+		if !itr.Scan(&redto) {
+			t.Errorf("Failed to find link %q", exp.link)
+			continue
+		}
+
+		err := itr.Close()
+		if err != nil {
+			t.Errorf("Iterator returned error %v", err)
+			continue
+		}
+
+		if redto != exp.redto {
+			t.Errorf("Redirect mismatch: got %q, expected %q", redto, exp.redto)
+		}
+	}
+}
