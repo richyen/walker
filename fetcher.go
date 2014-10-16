@@ -105,25 +105,39 @@ func ParseURL(ref string) (*URL, error) {
 // For example the TLD of http://www.bbc.co.uk/ is 'co.uk', plus one is
 // 'bbc.co.uk'. Walker uses these TLD+1 domains as the primary unit of
 // grouping.
-func (u *URL) ToplevelDomainPlusOne() string {
-	domain, err := publicsuffix.EffectiveTLDPlusOne(u.Host)
-	if err != nil {
-		log4go.Error("Error trying to get TLD+1 from %v, error: %v", *u, err)
-		return u.Host
-	}
-	return domain
+func (u *URL) ToplevelDomainPlusOne() (string, error) {
+	return publicsuffix.EffectiveTLDPlusOne(u.Host)
 }
 
 // Subdomain provides the remaining subdomain after removing the
 // ToplevelDomainPlusOne. For example http://www.bbc.co.uk/ will return 'www'
 // as the subdomain (note that there is no trailing period). If there is no
 // subdomain it will return "".
-func (u *URL) Subdomain() string {
-	tld := u.ToplevelDomainPlusOne()
-	if len(u.Host) == len(tld) {
-		return ""
+func (u *URL) Subdomain() (string, error) {
+	dom, err := u.ToplevelDomainPlusOne()
+	if err != nil {
+		return "", err
 	}
-	return strings.TrimSuffix(u.Host, "."+tld)
+	if len(u.Host) == len(dom) {
+		return "", nil
+	}
+	return strings.TrimSuffix(u.Host, "."+dom), nil
+}
+
+// TLDPlusOneAndSubdomain is a convenience function that calls
+// ToplevelDomainPlusOne and Subdomain, returning an error if we could not get
+// either one.
+// The first return is the TLD+1 and second is the subdomain
+func (u *URL) TLDPlusOneAndSubdomain() (string, string, error) {
+	dom, err := u.ToplevelDomainPlusOne()
+	if err != nil {
+		return "", "", err
+	}
+	subdom, err := u.Subdomain()
+	if err != nil {
+		return "", "", err
+	}
+	return dom, subdom, nil
 }
 
 // MakeAbsolute uses URL.ResolveReference to make this URL object an absolute

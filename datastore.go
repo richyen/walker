@@ -188,9 +188,17 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		url = fr.RedirectedFrom[len(fr.RedirectedFrom)-1]
 	}
 
+	dom, subdom, err := fr.URL.TLDPlusOneAndSubdomain()
+	if err != nil {
+		// Consider storing in the link table so we don't keep trying to crawl
+		// this link
+		log4go.Error("StoreURLFetchResults not storing %v: %v", fr.URL, err)
+		return
+	}
+
 	inserts := []dbfield{
-		dbfield{"dom", url.ToplevelDomainPlusOne()},
-		dbfield{"subdom", url.Subdomain()},
+		dbfield{"dom", dom},
+		dbfield{"subdom", subdom},
 		dbfield{"path", url.RequestURI()},
 		dbfield{"proto", url.Scheme},
 		dbfield{"time", fr.FetchTime},
@@ -217,7 +225,7 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		values = append(values, f.value)
 		placeholders = append(placeholders, "?")
 	}
-	err := ds.db.Query(
+	err = ds.db.Query(
 		fmt.Sprintf(`INSERT INTO links (%s) VALUES (%s)`,
 			strings.Join(names, ", "), strings.Join(placeholders, ", ")),
 		values...,
@@ -234,9 +242,13 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		back := fr.URL
 		for i := 0; i < len(rf); i++ {
 			front := rf[i]
+			dom, subdom, err = back.TLDPlusOneAndSubdomain()
+			if err != nil {
+				log4go.Error("StoreURLFetchResults not storing info for url that redirected (%v): %v", back, err)
+				continue
+			}
 			err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time, redto_url) VALUES (?, ?, ?, ?, ?, ?)`,
-				back.ToplevelDomainPlusOne(), back.Subdomain(),
-				back.RequestURI(), back.Scheme, fr.FetchTime,
+				dom, subdom, back.RequestURI(), back.Scheme, fr.FetchTime,
 				front.String()).Exec()
 			if err != nil {
 				log4go.Error("Failed to insert redirected link %s -> %s: %v", back.String(), front.String(), err)
@@ -247,17 +259,23 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 }
 
 func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
-	if u.Host == "" {
-		log4go.Warn("Not handling link because there is no host: %v", *u)
+	if !u.IsAbs() {
+		log4go.Warn("Link should not have made it to StoreParsedURL: %v", u)
 		return
 	}
-	domain := u.ToplevelDomainPlusOne()
-	if Config.AddNewDomains {
-		ds.addDomainIfNew(domain)
+	dom, subdom, err := u.TLDPlusOneAndSubdomain()
+	if err != nil {
+		log4go.Debug("StoreParsedURL not storing %v: %v", fr.URL, err)
+		return
 	}
-	err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
+
+	if Config.AddNewDomains {
+		ds.addDomainIfNew(dom)
+	}
+	log4go.Fine("Inserting parsed URL: %v", u)
+	err = ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
 						VALUES (?, ?, ?, ?, ?)`,
-		domain, u.Subdomain(), u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
+		dom, subdom, u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
 	if err != nil {
 		log4go.Error("failed inserting parsed url (%v) to cassandra, %v", u, err)
 	}

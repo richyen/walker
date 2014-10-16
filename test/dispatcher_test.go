@@ -107,19 +107,20 @@ func TestDispatcherBasic(t *testing.T) {
 		}
 
 		for _, el := range dt.ExistingLinks {
+			dom, subdom, _ := el.URL.TLDPlusOneAndSubdomain()
 			if el.Status == -1 {
 				q = db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
 								VALUES (?, ?, ?, ?, ?)`,
-					el.URL.ToplevelDomainPlusOne(),
-					el.URL.Subdomain(),
+					dom,
+					subdom,
 					el.URL.RequestURI(),
 					el.URL.Scheme,
 					el.URL.LastCrawled)
 			} else {
 				q = db.Query(`INSERT INTO links (dom, subdom, path, proto, time, stat)
 								VALUES (?, ?, ?, ?, ?, ?)`,
-					el.URL.ToplevelDomainPlusOne(),
-					el.URL.Subdomain(),
+					dom,
+					subdom,
 					el.URL.RequestURI(),
 					el.URL.Scheme,
 					el.URL.LastCrawled,

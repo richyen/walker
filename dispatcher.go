@@ -40,9 +40,16 @@ type CassandraDispatcher struct {
 	cf *gocql.ClusterConfig
 	db *gocql.Session
 
-	domains chan string    // For passing domains to generate to worker goroutines
-	quit    chan struct{}  // Channel to close to stop the dispatcher (used by `Stop()`)
-	wg      sync.WaitGroup // WaitGroup for the generator goroutines
+	domains chan string   // For passing domains to generate to worker goroutines
+	quit    chan struct{} // Channel to close to stop the dispatcher (used by `Stop()`)
+
+	// synchronizes when all generator routines have exited, so
+	// `StopDispatcher()` can wait until all processing is done
+	finishWG sync.WaitGroup
+
+	// synchronizes generators that are currently working, so we can wait for
+	// them to finish before we start a new domain iteration
+	generatingWG sync.WaitGroup
 }
 
 func (d *CassandraDispatcher) StartDispatcher() error {
@@ -60,10 +67,10 @@ func (d *CassandraDispatcher) StartDispatcher() error {
 	//TODO: add Concurrency to config
 	concurrency := 1
 	for i := 0; i < concurrency; i++ {
-		d.wg.Add(1)
+		d.finishWG.Add(1)
 		go func() {
 			d.generateRoutine()
-			d.wg.Done()
+			d.finishWG.Done()
 		}()
 	}
 
@@ -74,7 +81,7 @@ func (d *CassandraDispatcher) StartDispatcher() error {
 func (d *CassandraDispatcher) StopDispatcher() error {
 	log4go.Info("Stopping CassandraDispatcher")
 	close(d.quit)
-	d.wg.Wait()
+	d.finishWG.Wait()
 	d.db.Close()
 	return nil
 }
@@ -83,7 +90,8 @@ func (d *CassandraDispatcher) domainIterator() {
 	for {
 		log4go.Debug("Starting new domain iteration")
 		domainiter := d.db.Query(`SELECT dom, dispatched FROM domain_info
-									WHERE claim_tok = 00000000-0000-0000-0000-000000000000`).Iter()
+									WHERE claim_tok = 00000000-0000-0000-0000-000000000000
+									AND dispatched = false ALLOW FILTERING`).Iter()
 
 		var domain string
 		var dispatched bool
@@ -116,14 +124,17 @@ func (d *CassandraDispatcher) domainIterator() {
 
 		//TODO: configure this sleep time
 		time.Sleep(time.Second)
+		d.generatingWG.Wait()
 	}
 }
 
 func (d *CassandraDispatcher) generateRoutine() {
 	for domain := range d.domains {
+		d.generatingWG.Add(1)
 		if err := d.generateSegment(domain); err != nil {
 			log4go.Error("error generating segment for %v: %v", domain, err)
 		}
+		d.generatingWG.Done()
 	}
 	log4go.Debug("Finishing generateRoutine")
 }
@@ -172,12 +183,19 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	}
 
 	for _, u := range links {
+		dom, subdom, err := u.TLDPlusOneAndSubdomain()
+		if err != nil {
+			// Since the link is already in our system this should not happen;
+			// consider doing something else about it
+			log4go.Debug("Failed to get domain/subdomain from %v not storing: %v", u, err)
+			continue
+		}
+
 		log4go.Debug("Inserting link in segment: %v", u)
-		err := d.db.Query(`INSERT INTO segments
+		err = d.db.Query(`INSERT INTO segments
 			(dom, subdom, path, proto, time)
 			VALUES (?, ?, ?, ?, ?)`,
-			u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme, u.LastCrawled).Exec()
-
+			dom, subdom, u.RequestURI(), u.Scheme, u.LastCrawled).Exec()
 		if err != nil {
 			log4go.Error("Failed to insert link (%v), error: %v", u, err)
 		}

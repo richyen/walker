@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"testing"
 
+	"code.google.com/p/log4go"
+
 	"github.com/iParadigms/walker"
 )
 
@@ -12,6 +14,9 @@ func init() {
 	// Tests outside of config_test.go also require this configuration to be
 	// loaded; Config tests should reset it by making this call
 	loadTestConfig("test-walker.yaml")
+
+	// For tests it's useful to see more than the default INFO
+	log4go.AddFilter("stdout", log4go.DEBUG, log4go.NewConsoleLogWriter())
 }
 
 // loadTestConfig loads the given test config yaml file. The given path is
