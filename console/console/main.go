@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
+	"os"
 
 	"code.google.com/p/log4go"
-	"github.com/codegangsta/negroni"
-	"github.com/gorilla/mux"
 	"github.com/iParadigms/walker"
 	"github.com/iParadigms/walker/console"
 )
@@ -18,29 +15,17 @@ func modifyConfigMain() {
 }
 
 func main() {
-	if true {
-		modifyConfigMain()
-		console.SpoofData()
-	}
+	// if true {
+	// 	modifyConfigMain()
+	// 	console.SpoofData()
+	// }
+	modifyConfigMain()
 
-	ds, err := console.NewCqlModel()
-	if err != nil {
-		panic(fmt.Errorf("Failed to start data source: %v", err))
-	}
+	log4go.AddFilter("stdout", log4go.FINE, log4go.NewConsoleLogWriter())
+	log4go.Error("Console my pid is %d", os.Getpid())
+	log4go.Error("HERE I AM")
 
-	console.DS = ds
-	defer ds.Close()
+	console.Run()
+	log4go.Error("Post run")
 
-	console.BuildRender(true)
-
-	router := mux.NewRouter()
-	routes := console.Routes()
-	for _, route := range routes {
-		log4go.Info("Registering path %s", route.Path)
-		router.HandleFunc(route.Path, route.Controller)
-	}
-
-	n := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.NewStatic(http.Dir("public")))
-	n.UseHandler(router)
-	n.Run(":3000")
 }

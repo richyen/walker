@@ -83,6 +83,7 @@ type WalkerConfig struct {
 	} `yaml:"cassandra"`
 
 	Console struct {
+		Port              int    `yaml:port`
 		TemplateDirectory string `yaml:template_directory`
 	} `yaml:"console"`
 }
@@ -107,6 +108,7 @@ func SetDefaultConfig() {
 	Config.Cassandra.Keyspace = "walker"
 	Config.Cassandra.ReplicationFactor = 3
 
+	Config.Console.Port = 3000
 	Config.Console.TemplateDirectory = "console/templates"
 }
 
