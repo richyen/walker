@@ -85,6 +85,9 @@ func (sl *stoppableListener) stop() {
 var shutdownWaitGroup sync.WaitGroup
 var shutdownChannel chan struct{}
 
+//buildControllerCounter will wrap a handler, and count outstanding handlers to make sure they
+// are all complete. We could time this out if we have straggler handlers. But I see no evidence
+// that is needed right now.
 func buildControllerCounter(toWrap func(w http.ResponseWriter, req *http.Request)) func(w http.ResponseWriter, req *http.Request) {
 	return func(w http.ResponseWriter, req *http.Request) {
 		shutdownWaitGroup.Add(1)
@@ -108,7 +111,6 @@ func Start() {
 	shutdownChannel = make(chan struct{})
 	shutdownWaitGroup = sync.WaitGroup{}
 
-	// this Add is being offset in the Listen and Serve part of the next go-routine
 	shutdownWaitGroup.Add(1)
 	go func() {
 		defer shutdownWaitGroup.Done()
@@ -210,12 +212,13 @@ func Start() {
 	}()
 }
 
-//Stop will stop the console from running.
-// func Stop() {
-// 	close(shutdownChannel)
-// 	shutdownWaitGroup.Wait()
-// 	log4go.Info("Console shutdown complete")
-// }
+//Stop will stop the console from running. Currently unused, but I'm leaving it here for now, as
+// it seems like something one might want to be able to do.
+func Stop() {
+	close(shutdownChannel)
+	shutdownWaitGroup.Wait()
+	log4go.Info("Console shutdown complete")
+}
 
 //Run will run console until SIGINT is caught
 func Run() {
