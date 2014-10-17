@@ -405,7 +405,7 @@ func TestStoreURLFetchResults(t *testing.T) {
 	}
 }
 
-func TestURL(t *testing.T) {
+func TestURLCreation(t *testing.T) {
 	url1, err := url.Parse("http://sub1.test.com/thepath?query=blah")
 	if err != nil {
 		t.Fatal(err)
@@ -414,19 +414,8 @@ func TestURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	if url1.String() != wurl1.String() {
 		t.Errorf("URLs should be the same: %v\nAnd: %v")
-	}
-	tld := wurl1.ToplevelDomainPlusOne()
-	expectedtld := "test.com"
-	if tld != expectedtld {
-		t.Errorf("Expected ToplevelDomainPlusOne to be %v\nBut got: %v", expectedtld, tld)
-	}
-	sub := wurl1.Subdomain()
-	expectedsub := "sub1"
-	if sub != expectedsub {
-		t.Errorf("Expected ToplevelDomainPlusOne to be %v\nBut got: %v", expectedsub, sub)
 	}
 
 	created, err := walker.CreateURL("test.com", "sub1", "thepath?query=blah", "http",
@@ -436,5 +425,109 @@ func TestURL(t *testing.T) {
 	}
 	if created.String() != wurl1.String() {
 		t.Errorf("Expected CreateURL to return %v\nBut got: %v", wurl1, created)
+	}
+}
+
+var tldtests = []struct {
+	URL                string
+	ExpectedTLDPlusOne string
+	ExpectedSubdomain  string
+	ErrorExpected      bool
+}{
+	{"http://sub1.test.com/thepath?query=blah", "test.com", "sub1", false},
+	{"http://foo", "", "", true},
+}
+
+func TestURLTLD(t *testing.T) {
+	for _, dt := range tldtests {
+		u, err := walker.ParseURL(dt.URL)
+		if err != nil {
+			if !dt.ErrorExpected {
+				t.Errorf("Did not expect error parsing %v: %v", dt.URL, err)
+			}
+			continue
+		}
+
+		dom, err := u.ToplevelDomainPlusOne()
+		if err != nil && !dt.ErrorExpected {
+			t.Errorf("Did not expect error getting TLD+1: %v", err)
+		}
+		if dom != dt.ExpectedTLDPlusOne {
+			t.Errorf("Expected ToplevelDomainPlusOne to be %v\nBut got: %v",
+				dt.ExpectedTLDPlusOne, dom)
+		}
+		subdom, err := u.Subdomain()
+		if err != nil && !dt.ErrorExpected {
+			t.Errorf("Did not expect error getting subdomain: %v", err)
+		}
+		if subdom != dt.ExpectedSubdomain {
+			t.Errorf("Expected Subdomain to be %v\nBut got: %v",
+				dt.ExpectedSubdomain, subdom)
+		}
+
+		dom2, subdom2, err := u.TLDPlusOneAndSubdomain()
+		if err != nil && !dt.ErrorExpected {
+			t.Errorf("Did not expect error getting TLD+1 and subdomain: %v", err)
+		}
+		if dom2 != dt.ExpectedTLDPlusOne {
+			t.Errorf("Expected TLDPlusOneAndSubdomain to give domain %v\nBut got: %v",
+				dt.ExpectedTLDPlusOne, dom2)
+		}
+		if subdom2 != dt.ExpectedSubdomain {
+			t.Errorf("Expected TLDPlusOneAndSubdomain to give subdomain %v\nBut got: %v",
+				dt.ExpectedSubdomain, subdom2)
+		}
+	}
+}
+
+func TestAddingRedirects(t *testing.T) {
+	db := getDB(t)
+	ds := getDS(t)
+
+	link := func(index int) string {
+		return fmt.Sprintf("http://subdom.dom.com/page%d.html", index)
+	}
+
+	fr := walker.FetchResults{
+		URL:            parse(link(1)),
+		RedirectedFrom: []*walker.URL{parse(link(2)), parse(link(3))},
+		FetchTime:      time.Unix(0, 0),
+	}
+
+	ds.StoreURLFetchResults(&fr)
+
+	expected := []struct {
+		link  string
+		redto string
+	}{
+		{link: link(1), redto: link(2)},
+		{link: link(2), redto: link(3)},
+		{link: link(3), redto: ""},
+	}
+
+	for _, exp := range expected {
+		url := parse(exp.link)
+
+		dom, subdom, _ := url.TLDPlusOneAndSubdomain()
+		itr := db.Query("SELECT redto_url FROM links WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?",
+			dom,
+			subdom,
+			url.RequestURI(),
+			url.Scheme).Iter()
+		var redto string
+		if !itr.Scan(&redto) {
+			t.Errorf("Failed to find link %q", exp.link)
+			continue
+		}
+
+		err := itr.Close()
+		if err != nil {
+			t.Errorf("Iterator returned error %v", err)
+			continue
+		}
+
+		if redto != exp.redto {
+			t.Errorf("Redirect mismatch: got %q, expected %q", redto, exp.redto)
+		}
 	}
 }

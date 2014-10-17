@@ -3,6 +3,7 @@
 package test
 
 import (
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"testing"
@@ -274,6 +275,162 @@ func TestFetcherCreatesTransport(t *testing.T) {
 
 	// It would be great to check that the DNS cache actually got used here,
 	// but with the current design there seems to be no way to check it
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
+}
+
+func TestRedirects(t *testing.T) {
+	link := func(index int) string {
+		return fmt.Sprintf("http://sub.dom.com/page%d.html", index)
+	}
+
+	roundTriper := mapRoundTrip{
+		responses: map[string]*http.Response{
+			link(1): response307(link(2)),
+			link(2): response307(link(3)),
+			link(3): response200(),
+		},
+	}
+
+	ds := &MockDatastore{}
+	ds.On("ClaimNewHost").Return("dom.com").Once()
+	ds.On("LinksForHost", "dom.com").Return([]*walker.URL{
+		parse(link(1)),
+	})
+	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
+	ds.On("UnclaimHost", "dom.com").Return()
+	ds.On("ClaimNewHost").Return("")
+
+	h := &MockHandler{}
+	h.On("HandleResponse", mock.Anything).Return()
+
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+		Transport: &roundTriper,
+	}
+
+	go manager.Start()
+	time.Sleep(time.Second * 2)
+	manager.Stop()
+	if len(h.Calls) < 1 {
+		t.Fatalf("Expected to find calls made to handler, but didn't")
+	}
+	fr := h.Calls[0].Arguments.Get(0).(*walker.FetchResults)
+
+	if fr.URL.String() != link(1) {
+		t.Errorf("URL mismatch, got %q, expected %q", fr.URL.String(), link(1))
+	}
+	if len(fr.RedirectedFrom) != 2 {
+		t.Errorf("RedirectedFrom length mismatch, got %d, expected %d", len(fr.RedirectedFrom), 2)
+	}
+	if fr.RedirectedFrom[0].String() != link(2) {
+		t.Errorf("RedirectedFrom[0] mismatch, got %q, expected %q", fr.RedirectedFrom[0].String(), link(2))
+	}
+	if fr.RedirectedFrom[1].String() != link(3) {
+		t.Errorf("RedirectedFrom[0] mismatch, got %q, expected %q", fr.RedirectedFrom[1].String(), link(3))
+	}
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
+}
+
+func TestHrefWithSpace(t *testing.T) {
+
+	testPage := "http://t.com/page1.html"
+	const html_with_href_space = `<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Test links page</title>
+</head>
+
+<div id="menu">
+	<a href=" relative-dir/">link</a>
+	<a href=" relative-page/page.html">link</a>
+	<a href=" /abs-relative-dir/">link</a>
+	<a href=" /abs-relative-page/page.html">link</a>
+	<a href=" https://other.org/abs-dir/">link</a>
+	<a href=" https://other.org/abs-page/page.html">link</a>
+</div>
+</html>`
+
+	ds := &MockDatastore{}
+	ds.On("ClaimNewHost").Return("t.com").Once()
+	ds.On("LinksForHost", "t.com").Return([]*walker.URL{
+		parse(testPage),
+	})
+	ds.On("UnclaimHost", "t.com").Return()
+	ds.On("ClaimNewHost").Return("")
+
+	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
+	ds.On("StoreParsedURL",
+		mock.AnythingOfType("*walker.URL"),
+		mock.AnythingOfType("*walker.FetchResults")).Return()
+
+	h := &MockHandler{}
+	h.On("HandleResponse", mock.Anything).Return()
+
+	rs, err := NewMockRemoteServer()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rs.SetResponse(testPage, &MockResponse{
+		ContentType: "text/html",
+		Body:        html_with_href_space,
+	})
+
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+		Transport: GetFakeTransport(),
+	}
+
+	go manager.Start()
+	time.Sleep(time.Second * 2)
+	manager.Stop()
+
+	rs.Stop()
+
+	foundTCom := false
+	for _, call := range h.Calls {
+		fr := call.Arguments.Get(0).(*walker.FetchResults)
+		if fr.URL.String() == testPage {
+			foundTCom = true
+			break
+		}
+	}
+	if !foundTCom {
+		t.Fatalf("Failed to find pushed link 'http://t.com/page1.html'")
+	}
+
+	expected := map[string]bool{
+		"http://t.com/relative-dir/":               true,
+		"http://t.com/relative-page/page.html":     true,
+		"http://t.com/abs-relative-dir/":           true,
+		"http://t.com/abs-relative-page/page.html": true,
+		"https://other.org/abs-dir/":               true,
+		"https://other.org/abs-page/page.html":     true,
+	}
+
+	for _, call := range ds.Calls {
+		if call.Method == "StoreParsedURL" {
+			u := call.Arguments.Get(0).(*walker.URL)
+			fr := call.Arguments.Get(1).(*walker.FetchResults)
+			if fr.URL.String() == testPage {
+				if expected[u.String()] {
+					delete(expected, u.String())
+				} else {
+					t.Errorf("StoreParsedURL mismatch found unexpected link %q", u.String())
+				}
+			}
+		}
+	}
+
+	for link, _ := range expected {
+		t.Errorf("StoreParsedURL didn't find link %q", link)
+	}
 
 	ds.AssertExpectations(t)
 	h.AssertExpectations(t)

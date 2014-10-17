@@ -65,6 +65,9 @@ type CassandraDatastore struct {
 
 	// A cache for domains we've already verified exist in domain_info
 	addedDomains *lrucache.LRUCache
+
+	// This is a unique UUID for the entire crawler.
+	crawlerUuid gocql.UUID
 }
 
 func GetCassandraConfig() *gocql.ClusterConfig {
@@ -83,6 +86,13 @@ func NewCassandraDatastore() (*CassandraDatastore, error) {
 		return nil, fmt.Errorf("Failed to create cassandra datastore: %v", err)
 	}
 	ds.addedDomains = lrucache.New(Config.AddedDomainsCacheSize)
+
+	u, err := gocql.RandomUUID()
+	if err != nil {
+		return ds, err
+	}
+	ds.crawlerUuid = u
+
 	return ds, nil
 }
 
@@ -115,14 +125,13 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 			//TODO: use a per-crawler uuid
 			log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
 			start = time.Now()
-			crawluuid, _ := gocql.RandomUUID()
 			err := ds.db.Query(`UPDATE domain_info SET claim_tok = ?, claim_time = ?
 								WHERE dom = ?`,
-				crawluuid, time.Now(), domain).Exec()
+				ds.crawlerUuid, time.Now(), domain).Exec()
 			if err != nil {
 				log4go.Error("Failed to claim segment %v: %v", domain, err)
 			} else {
-				log4go.Debug("Claimed segment %v with token %v in %v", domain, crawluuid, time.Since(start))
+				log4go.Debug("Claimed segment %v with token %v in %v", domain, ds.crawlerUuid, time.Since(start))
 				ds.domains = append(ds.domains, domain)
 			}
 		}
@@ -161,7 +170,9 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *URL {
 	links, err := ds.getSegmentLinks(domain)
 	if err != nil {
 		log4go.Error("Failed to grab segment for %v: %v", domain, err)
-		return nil
+		c := make(chan *URL)
+		close(c)
+		return c
 	}
 	log4go.Info("Returning %v links to crawl domain %v", len(links), domain)
 
@@ -181,11 +192,26 @@ type dbfield struct {
 }
 
 func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
+	url := fr.URL
+	if len(fr.RedirectedFrom) > 0 {
+		// Remember that the actual response of this FetchResults is from
+		// the url at the end of RedirectedFrom
+		url = fr.RedirectedFrom[len(fr.RedirectedFrom)-1]
+	}
+
+	dom, subdom, err := fr.URL.TLDPlusOneAndSubdomain()
+	if err != nil {
+		// Consider storing in the link table so we don't keep trying to crawl
+		// this link
+		log4go.Error("StoreURLFetchResults not storing %v: %v", fr.URL, err)
+		return
+	}
+
 	inserts := []dbfield{
-		dbfield{"dom", fr.URL.ToplevelDomainPlusOne()},
-		dbfield{"subdom", fr.URL.Subdomain()},
-		dbfield{"path", fr.URL.RequestURI()},
-		dbfield{"proto", fr.URL.Scheme},
+		dbfield{"dom", dom},
+		dbfield{"subdom", subdom},
+		dbfield{"path", url.RequestURI()},
+		dbfield{"proto", url.Scheme},
 		dbfield{"time", fr.FetchTime},
 	}
 
@@ -201,11 +227,6 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		inserts = append(inserts, dbfield{"stat", fr.Response.StatusCode})
 	}
 
-	//TODO: redirectURL, _ := fr.Res.Location()
-	//TODO: fp
-	//TODO: can we get RemoteAddr? fr.Res.Request.RemoteAddr may not be filled in
-	//TODO: fr.Res.Header.Get("Content-Type"),
-
 	// Put the values together and run the query
 	names := []string{}
 	values := []interface{}{}
@@ -215,28 +236,57 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		values = append(values, f.value)
 		placeholders = append(placeholders, "?")
 	}
-	err := ds.db.Query(
+	err = ds.db.Query(
 		fmt.Sprintf(`INSERT INTO links (%s) VALUES (%s)`,
 			strings.Join(names, ", "), strings.Join(placeholders, ", ")),
 		values...,
 	).Exec()
 	if err != nil {
 		log4go.Error("Failed storing fetch results: %v", err)
+		return
+	}
+
+	if len(fr.RedirectedFrom) > 0 {
+		// Only trick with this is that fr.URL redirected to RedirectedFrom[0], after that
+		// RedirectedFrom[n] redirected to RedirectedFrom[n+1]
+		rf := fr.RedirectedFrom
+		back := fr.URL
+		for i := 0; i < len(rf); i++ {
+			front := rf[i]
+			dom, subdom, err = back.TLDPlusOneAndSubdomain()
+			if err != nil {
+				log4go.Error("StoreURLFetchResults not storing info for url that redirected (%v): %v", back, err)
+				continue
+			}
+			err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time, redto_url) VALUES (?, ?, ?, ?, ?, ?)`,
+				dom, subdom, back.RequestURI(), back.Scheme, fr.FetchTime,
+				front.String()).Exec()
+			if err != nil {
+				log4go.Error("Failed to insert redirected link %s -> %s: %v", back.String(), front.String(), err)
+			}
+			back = front
+		}
 	}
 }
 
 func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
-	if u.Host == "" {
-		log4go.Warn("Not handling link because there is no host: %v", *u)
+	if !u.IsAbs() {
+		log4go.Warn("Link should not have made it to StoreParsedURL: %v", u)
 		return
 	}
-	domain := u.ToplevelDomainPlusOne()
-	if Config.AddNewDomains {
-		ds.addDomainIfNew(domain)
+	dom, subdom, err := u.TLDPlusOneAndSubdomain()
+	if err != nil {
+		log4go.Debug("StoreParsedURL not storing %v: %v", fr.URL, err)
+		return
 	}
-	err := ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
+
+	if Config.AddNewDomains {
+		ds.addDomainIfNew(dom)
+	}
+	log4go.Fine("Inserting parsed URL: %v", u)
+	err = ds.db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
 						VALUES (?, ?, ?, ?, ?)`,
-		domain, u.Subdomain(), u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
+		dom, subdom, u.RequestURI(), u.Scheme, NotYetCrawled).Exec()
 	if err != nil {
 		log4go.Error("failed inserting parsed url (%v) to cassandra, %v", u, err)
 	}
@@ -374,6 +424,10 @@ CREATE TABLE {{.Keyspace}}.links (
 	-- (null implies we were not excluded)
 	robot_ex boolean,
 
+	-- If this link redirects to another link target, the target link is stored
+	-- in this field
+	redto_url text,
+
 	---- Items yet to be added to walker
 
 	-- fingerprint, a hash of the page contents for identity comparison
@@ -388,9 +442,6 @@ CREATE TABLE {{.Keyspace}}.links (
 
 	-- referer, maybe can be kept for parsed links
 	--ref text,
-
-	-- redirect_url if this link redirected somewhere else
-	--redirect_url text,
 
 	-- mime type, also known as Content-Type (ex. "text/html")
 	--mime text,
