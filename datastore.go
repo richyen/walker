@@ -170,7 +170,9 @@ func (ds *CassandraDatastore) LinksForHost(domain string) <-chan *URL {
 	links, err := ds.getSegmentLinks(domain)
 	if err != nil {
 		log4go.Error("Failed to grab segment for %v: %v", domain, err)
-		return nil
+		c := make(chan *URL)
+		close(c)
+		return c
 	}
 	log4go.Info("Returning %v links to crawl domain %v", len(links), domain)
 
