@@ -6,7 +6,6 @@ package console
 import (
 	"html/template"
 	"net/http"
-	"os"
 	"time"
 
 	"code.google.com/p/log4go"
@@ -73,14 +72,7 @@ func fuuidFunc(u gocql.UUID) string {
 
 var Render *render.Render
 
-func BuildRender(verbose bool) {
-	pwd, err := os.Getwd()
-	if err != nil {
-		pwd = "UNKNOWN"
-	}
-	if verbose {
-		log4go.Info("Setting templates directory to '%s' [pwd=%s]", walker.Config.Console.TemplateDirectory, pwd)
-	}
+func BuildRender() {
 	Render = render.New(render.Options{
 		Directory:     walker.Config.Console.TemplateDirectory,
 		Layout:        "layout",

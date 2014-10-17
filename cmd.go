@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/iParadigms/walker/console"
 	"github.com/spf13/cobra"
 )
 
@@ -63,6 +64,7 @@ func init() {
 		}
 	}
 
+	var noConsole bool = false
 	crawlCommand := &cobra.Command{
 		Use:   "crawl",
 		Short: "start an all-in-one crawler",
@@ -97,6 +99,10 @@ func init() {
 				}()
 			}
 
+			if !noConsole {
+				console.Start()
+			}
+
 			sig := make(chan os.Signal)
 			signal.Notify(sig, syscall.SIGINT)
 			<-sig
@@ -107,6 +113,8 @@ func init() {
 			manager.Stop()
 		},
 	}
+	//XXX: I want D. Kinder to tell me what he wants to call the noConsole flag
+	crawlCommand.Flags().BoolVarP(&noConsole, "xconsole", "x", false, "Do not start the console")
 	walkerCommand.AddCommand(crawlCommand)
 
 	fetchCommand := &cobra.Command{

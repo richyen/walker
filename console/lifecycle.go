@@ -93,6 +93,14 @@ func buildControllerCounter(toWrap func(w http.ResponseWriter, req *http.Request
 	}
 }
 
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
 // Start the console. NOTE: we only support a single instance of console
 // at a time. You must match all your Start() calls with Stop() calls or else
 // bad things happen.
@@ -103,6 +111,20 @@ func Start() {
 	// this Add is being offset in the Listen and Serve part of the next go-routine
 	shutdownWaitGroup.Add(1)
 	go func() {
+		//
+		// Do some resource sanity
+		//
+		if !isDir(walker.Config.Console.TemplateDirectory) {
+			log4go.Error("CONSOLE PANIC: Unable to locate templates in directory %q", walker.Config.Console.TemplateDirectory)
+		} else {
+			log4go.Info("Console setting templates directory to %q", walker.Config.Console.TemplateDirectory)
+		}
+
+		if !isDir(walker.Config.Console.PublicFolder) {
+			log4go.Error("CONSOLE PANIC: Unable to locate public folder in directory %q", walker.Config.Console.PublicFolder)
+		} else {
+			log4go.Info("Console setting public folder to %q", walker.Config.Console.PublicFolder)
+		}
 
 		//
 		// Set up data store
@@ -117,7 +139,7 @@ func Start() {
 		//
 		// Set up template renderer
 		//
-		BuildRender(true)
+		BuildRender()
 
 		//
 		// Set up router to point to controllers
@@ -132,7 +154,7 @@ func Start() {
 		//
 		// Set up middleware
 		//
-		neg := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.NewStatic(http.Dir("public")))
+		neg := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.NewStatic(http.Dir(walker.Config.Console.PublicFolder)))
 		neg.UseHandler(router)
 
 		//
@@ -187,38 +209,18 @@ func Start() {
 	}()
 }
 
-func Run() {
-	Start()
-	shutdownWaitGroup.Wait()
-	log4go.Info("Console shutdown complete")
-}
-
-//Stop will stop the console from running. Unfortunately there is not
-//easy way to timeout this call. So if you need to stop no-matter-what
-//you should call StopChan.
+//Stop will stop the console from running. We can time this call out, but
+//we can never destroy the still-outstanding go-routines. I think the handlers
+//are short lived enough that this
 func Stop() {
 	close(shutdownChannel)
 	shutdownWaitGroup.Wait()
 	log4go.Info("Console shutdown complete")
 }
 
-//StopTimeout will try to stop the server. It will return in no more than d-duration.
-func StopTimeout(d time.Duration) bool {
-	c := make(chan struct{})
-
-	go func() {
-		close(shutdownChannel)
-		shutdownWaitGroup.Wait()
-		close(c)
-	}()
-
-	log4go.Info("Console trying shutdown sequence")
-	select {
-	case <-c:
-		log4go.Info("Console shutdown complete")
-		return true
-	case <-time.After(d):
-		log4go.Info("Console shutdown NOT COMPLETE: waitgroup time out")
-		return false
-	}
+//Run will run console until SIGINT is caught
+func Run() {
+	Start()
+	shutdownWaitGroup.Wait()
+	log4go.Info("Console shutdown complete")
 }

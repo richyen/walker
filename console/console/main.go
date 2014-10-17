@@ -15,17 +15,13 @@ func modifyConfigMain() {
 }
 
 func main() {
-	// if true {
-	// 	modifyConfigMain()
-	// 	console.SpoofData()
-	// }
-	modifyConfigMain()
+	if true {
+		modifyConfigMain()
+		console.SpoofData()
+	}
 
 	log4go.AddFilter("stdout", log4go.FINE, log4go.NewConsoleLogWriter())
-	log4go.Error("Console my pid is %d", os.Getpid())
-	log4go.Error("HERE I AM")
+	log4go.Error("Console pid is %d", os.Getpid())
 
 	console.Run()
-	log4go.Error("Post run")
-
 }

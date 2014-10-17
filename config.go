@@ -83,8 +83,9 @@ type WalkerConfig struct {
 	} `yaml:"cassandra"`
 
 	Console struct {
-		Port              int    `yaml:port`
-		TemplateDirectory string `yaml:template_directory`
+		Port              int    `yaml:"port"`
+		TemplateDirectory string `yaml:"template_directory"`
+		PublicFolder      string `yaml:"public_folder"`
 	} `yaml:"console"`
 }
 
@@ -110,6 +111,7 @@ func SetDefaultConfig() {
 
 	Config.Console.Port = 3000
 	Config.Console.TemplateDirectory = "console/templates"
+	Config.Console.PublicFolder = "console/public"
 }
 
 // ReadConfigFile sets a new path to find the walker yaml config file and
