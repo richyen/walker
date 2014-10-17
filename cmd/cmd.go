@@ -15,24 +15,24 @@ import (
 // own Handler, Datastore, or Dispatcher. A crawler that uses the default for
 // each of these requires simply:
 //
-//		func main() {
-//			cmd.Execute()
-//		}
+//  func main() {
+//      cmd.Execute()
+//  }
 //
 // To create your own binary that uses walker's flags but has its own handler:
 //
-//		func main() {
-//			cmd.Handler(NewMyHandler())
-//          cmd.Execute()
-//		}
+//  func main() {
+//      cmd.Handler(NewMyHandler())
+//      cmd.Execute()
+//  }
 //
 // Likewise if you want to set your own Datastore and Dispatcher:
 //
-//		func main() {
-//          cmd.DataStore(NewMyDatastore())
-//          cmd.Dispatcher(NewMyDatastore())
-//          cmd.Execute()
-//		}
+//  func main() {
+//      cmd.DataStore(NewMyDatastore())
+//      cmd.Dispatcher(NewMyDatastore())
+//      cmd.Execute()
+//  }
 //
 // cmd.Execute() blocks until the program has completed (usually by
 // being shutdown gracefully via SIGINT).
@@ -200,9 +200,9 @@ func init() {
 		Use:   "seed",
 		Short: "add a seed URL to the datastore",
 		Long: `Seed is useful for:
-	- Adding starter links to bootstrap a broad crawl
-	- Adding links when add_new_domains is false
-	- Adding any other link that needs to be crawled soon
+    - Adding starter links to bootstrap a broad crawl
+    - Adding links when add_new_domains is false
+    - Adding any other link that needs to be crawled soon
 
 This command will insert the provided link and also add its domain to the
 crawl, regardless of the add_new_domains configuration setting.`,
@@ -242,10 +242,10 @@ crawl, regardless of the add_new_domains configuration setting.`,
 		Long: `Schema prints the walker schema to stdout, substituting
 schema-relevant configuration items (ex. keyspace, replication factor).
 Useful for something like:
-	$ <edit walker.yaml as desired>
-	$ walker schema -o schema.cql
-	$ <edit schema.cql further as desired>
-	$ cqlsh -f schema.cql
+    $ <edit walker.yaml as desired>
+    $ walker schema -o schema.cql
+    $ <edit schema.cql further as desired>
+    $ cqlsh -f schema.cql
 `,
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
