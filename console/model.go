@@ -150,9 +150,9 @@ func (ds *CqlModel) InsertLinks(links []string) []error {
 			urls = append(urls, nil)
 			continue
 		}
-		domain := url.ToplevelDomainPlusOne()
-		if domain == "" {
-			errList = append(errList, fmt.Errorf("%v # ToplevelDomainPlusOne: bad domain", link))
+		domain, err := url.ToplevelDomainPlusOne()
+		if err != nil {
+			errList = append(errList, fmt.Errorf("%v # ToplevelDomainPlusOne: bad domain: %v", link, err))
 			domains = append(domains, "")
 			urls = append(urls, nil)
 			continue
@@ -187,8 +187,14 @@ func (ds *CqlModel) InsertLinks(links []string) []error {
 		}
 		seen[d] = true
 
-		err := db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
-                                     VALUES (?, ?, ?, ?, ?)`, d, u.Subdomain(),
+		subdom, err := u.Subdomain()
+		if err != nil {
+			errList = append(errList, fmt.Errorf("%v # Subdomain(): %v", link, err))
+			continue
+		}
+
+		err = db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
+                                     VALUES (?, ?, ?, ?, ?)`, d, subdom,
 			u.RequestURI(), u.Scheme, walker.NotYetCrawled).Exec()
 		if err != nil {
 			errList = append(errList, fmt.Errorf("%v # `insert query`: %v", link, err))
@@ -421,8 +427,17 @@ func (ds *CqlModel) ListLinks(domain string, seedUrl string, limit int) ([]LinkI
 		if err != nil {
 			return linfos, err
 		}
-		dom := u.ToplevelDomainPlusOne()
-		sub := u.Subdomain()
+
+		dom, err := u.ToplevelDomainPlusOne()
+		if err != nil {
+			return linfos, err
+		}
+
+		sub, err := u.Subdomain()
+		if err != nil {
+			return linfos, err
+		}
+
 		pat := u.RequestURI()
 		pro := u.Scheme
 
@@ -486,7 +501,16 @@ func (ds *CqlModel) ListLinkHistorical(linkUrl string, seedIndex int, limit int)
 	query := `SELECT dom, subdom, path, proto, time, stat, err, robot_ex 
               FROM links
               WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?`
-	itr := db.Query(query, u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme).Iter()
+	tld1, err := u.ToplevelDomainPlusOne()
+	if err != nil {
+		return nil, seedIndex, err
+	}
+	subtld1, err := u.Subdomain()
+	if err != nil {
+		return nil, seedIndex, err
+	}
+
+	itr := db.Query(query, tld1, subtld1, u.RequestURI(), u.Scheme).Iter()
 
 	var linfos []LinkInfo
 	var dom, sub, path, prot, getError string
@@ -530,7 +554,18 @@ func (ds *CqlModel) FindLink(link string) (*LinkInfo, error) {
                             subdom = ? AND 
                             path = ? AND 
                             proto = ?`
-	itr := db.Query(query, u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme).Iter()
+
+	tld1, err := u.ToplevelDomainPlusOne()
+	if err != nil {
+		return nil, err
+	}
+
+	subtld1, err := u.Subdomain()
+	if err != nil {
+		return nil, err
+	}
+
+	itr := db.Query(query, tld1, subtld1, u.RequestURI(), u.Scheme).Iter()
 	rtimes := map[string]rememberTimes{}
 	linfos, err := ds.collectLinkInfos(nil, rtimes, itr, 1)
 	if err != nil {

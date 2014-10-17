@@ -278,14 +278,13 @@ func AddLinkIndexController(w http.ResponseWriter, req *http.Request) <span clas
                         continue</span>
                 }
 
-                <span class="cov8" title="1">uc := urlCleanse(u)
-                if uc == "" </span><span class="cov0" title="0">{
-                        errs = append(errs, fmt.Sprintf("Unacceptable scheme for '%v'", u))
+                <span class="cov8" title="1">u, err := assureScheme(u)
+                if err != nil </span><span class="cov0" title="0">{
+                        errs = append(errs, err.Error())
                         continue</span>
                 }
-                <span class="cov8" title="1">u = uc
 
-                links = append(links, u)</span>
+                <span class="cov8" title="1">links = append(links, u)</span>
         }
 
         <span class="cov8" title="1">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
@@ -455,14 +454,13 @@ func FindLinksController(w http.ResponseWriter, req *http.Request) <span class="
                         continue</span>
                 }
 
-                <span class="cov8" title="1">uc := urlCleanse(u)
-                if uc == "" </span><span class="cov0" title="0">{
-                        errs = append(errs, fmt.Sprintf("Unacceptable scheme for '%v'", u))
+                <span class="cov8" title="1">u, err := assureScheme(u)
+                if err != nil </span><span class="cov0" title="0">{
+                        errs = append(errs, err.Error())
                         continue</span>
                 }
-                <span class="cov8" title="1">u = uc
 
-                linfo, err := DS.FindLink(u)
+                <span class="cov8" title="1">linfo, err := DS.FindLink(u)
                 if err != nil </span><span class="cov0" title="0">{
                         errs = append(errs, fmt.Sprintf("FindLinks error: %v", err))
                         continue</span>
@@ -513,26 +511,20 @@ func FindLinksController(w http.ResponseWriter, req *http.Request) <span class="
         return</span>
 }
 
-// UTILITY
-// urlCleanse returns a URL with an acceptable scheme, or the empty string
-// if no acceptable scheme is present. In the event the scheme is not provided,
-// http is assumed. NOTE: There is a similar function in walker proper. When
-// we get to the point of refactoring the data models together, this can be
-// merged.
-func urlCleanse(url string) string <span class="cov8" title="1">{
+func assureScheme(url string) (string, error) <span class="cov8" title="1">{
         index := strings.LastIndex(url, ":")
         if index &lt; 0 </span><span class="cov0" title="0">{
-                return "http://" + url
+                return "http://" + url, nil
         }</span>
 
         <span class="cov8" title="1">scheme := url[:index]
         for _, f := range walker.Config.AcceptProtocols </span><span class="cov8" title="1">{
                 if scheme == f </span><span class="cov8" title="1">{
-                        return url
+                        return url, nil
                 }</span>
         }
 
-        <span class="cov0" title="0">return ""</span>
+        <span class="cov0" title="0">return "", fmt.Errorf("Scheme %q is not in AcceptProtocols", scheme)</span>
 }
 </pre>
 		
@@ -922,9 +914,9 @@ func (ds *CqlModel) InsertLinks(links []string) []error <span class="cov8" title
                         urls = append(urls, nil)
                         continue</span>
                 }
-                <span class="cov8" title="1">domain := url.ToplevelDomainPlusOne()
-                if domain == "" </span><span class="cov0" title="0">{
-                        errList = append(errList, fmt.Errorf("%v # ToplevelDomainPlusOne: bad domain", link))
+                <span class="cov8" title="1">domain, err := url.ToplevelDomainPlusOne()
+                if err != nil </span><span class="cov0" title="0">{
+                        errList = append(errList, fmt.Errorf("%v # ToplevelDomainPlusOne: bad domain: %v", link, err))
                         domains = append(domains, "")
                         urls = append(urls, nil)
                         continue</span>
@@ -959,8 +951,14 @@ func (ds *CqlModel) InsertLinks(links []string) []error <span class="cov8" title
                 }
                 <span class="cov8" title="1">seen[d] = true
 
-                err := db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
-                                     VALUES (?, ?, ?, ?, ?)`, d, u.Subdomain(),
+                subdom, err := u.Subdomain()
+                if err != nil </span><span class="cov0" title="0">{
+                        errList = append(errList, fmt.Errorf("%v # Subdomain(): %v", link, err))
+                        continue</span>
+                }
+
+                <span class="cov8" title="1">err = db.Query(`INSERT INTO links (dom, subdom, path, proto, time)
+                                     VALUES (?, ?, ?, ?, ?)`, d, subdom,
                         u.RequestURI(), u.Scheme, walker.NotYetCrawled).Exec()
                 if err != nil </span><span class="cov0" title="0">{
                         errList = append(errList, fmt.Errorf("%v # `insert query`: %v", link, err))
@@ -1193,9 +1191,18 @@ func (ds *CqlModel) ListLinks(domain string, seedUrl string, limit int) ([]LinkI
                 if err != nil </span><span class="cov0" title="0">{
                         return linfos, err
                 }</span>
-                <span class="cov8" title="1">dom := u.ToplevelDomainPlusOne()
-                sub := u.Subdomain()
-                pat := u.RequestURI()
+
+                <span class="cov8" title="1">dom, err := u.ToplevelDomainPlusOne()
+                if err != nil </span><span class="cov0" title="0">{
+                        return linfos, err
+                }</span>
+
+                <span class="cov8" title="1">sub, err := u.Subdomain()
+                if err != nil </span><span class="cov0" title="0">{
+                        return linfos, err
+                }</span>
+
+                <span class="cov8" title="1">pat := u.RequestURI()
                 pro := u.Scheme
 
                 table = []queryEntry{
@@ -1258,7 +1265,16 @@ func (ds *CqlModel) ListLinkHistorical(linkUrl string, seedIndex int, limit int)
         <span class="cov8" title="1">query := `SELECT dom, subdom, path, proto, time, stat, err, robot_ex 
               FROM links
               WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?`
-        itr := db.Query(query, u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme).Iter()
+        tld1, err := u.ToplevelDomainPlusOne()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, seedIndex, err
+        }</span>
+        <span class="cov8" title="1">subtld1, err := u.Subdomain()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, seedIndex, err
+        }</span>
+
+        <span class="cov8" title="1">itr := db.Query(query, tld1, subtld1, u.RequestURI(), u.Scheme).Iter()
 
         var linfos []LinkInfo
         var dom, sub, path, prot, getError string
@@ -1302,7 +1318,18 @@ func (ds *CqlModel) FindLink(link string) (*LinkInfo, error) <span class="cov8" 
                             subdom = ? AND 
                             path = ? AND 
                             proto = ?`
-        itr := db.Query(query, u.ToplevelDomainPlusOne(), u.Subdomain(), u.RequestURI(), u.Scheme).Iter()
+
+        tld1, err := u.ToplevelDomainPlusOne()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">subtld1, err := u.Subdomain()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        <span class="cov8" title="1">itr := db.Query(query, tld1, subtld1, u.RequestURI(), u.Scheme).Iter()
         rtimes := map[string]rememberTimes{}
         linfos, err := ds.collectLinkInfos(nil, rtimes, itr, 1)
         if err != nil </span><span class="cov0" title="0">{

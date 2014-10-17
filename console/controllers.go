@@ -200,12 +200,11 @@ func AddLinkIndexController(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
-		uc := urlCleanse(u)
-		if uc == "" {
-			errs = append(errs, fmt.Sprintf("Unacceptable scheme for '%v'", u))
+		u, err := assureScheme(u)
+		if err != nil {
+			errs = append(errs, err.Error())
 			continue
 		}
-		u = uc
 
 		links = append(links, u)
 	}
@@ -377,12 +376,11 @@ func FindLinksController(w http.ResponseWriter, req *http.Request) {
 			continue
 		}
 
-		uc := urlCleanse(u)
-		if uc == "" {
-			errs = append(errs, fmt.Sprintf("Unacceptable scheme for '%v'", u))
+		u, err := assureScheme(u)
+		if err != nil {
+			errs = append(errs, err.Error())
 			continue
 		}
-		u = uc
 
 		linfo, err := DS.FindLink(u)
 		if err != nil {
@@ -435,24 +433,18 @@ func FindLinksController(w http.ResponseWriter, req *http.Request) {
 	return
 }
 
-// UTILITY
-// urlCleanse returns a URL with an acceptable scheme, or the empty string
-// if no acceptable scheme is present. In the event the scheme is not provided,
-// http is assumed. NOTE: There is a similar function in walker proper. When
-// we get to the point of refactoring the data models together, this can be
-// merged.
-func urlCleanse(url string) string {
+func assureScheme(url string) (string, error) {
 	index := strings.LastIndex(url, ":")
 	if index < 0 {
-		return "http://" + url
+		return "http://" + url, nil
 	}
 
 	scheme := url[:index]
 	for _, f := range walker.Config.AcceptProtocols {
 		if scheme == f {
-			return url
+			return url, nil
 		}
 	}
 
-	return ""
+	return "", fmt.Errorf("Scheme %q is not in AcceptProtocols", scheme)
 }
