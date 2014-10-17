@@ -43,7 +43,7 @@ func spoofData() {
 	}
 	console.DS = ds
 
-	console.BuildRender(false)
+	console.BuildRender()
 }
 
 //

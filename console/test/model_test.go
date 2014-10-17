@@ -218,19 +218,18 @@ var initdb sync.Once
 func getDs(t *testing.T) *console.CqlModel {
 	modifyConfigDataSource()
 
-	ds, err := console.NewCqlModel()
-	if err != nil {
-		panic(err)
-	}
-	db := ds.Db
-
 	initdb.Do(func() {
+		cluster := gocql.NewCluster(walker.Config.Cassandra.Hosts...)
+		db, err := cluster.CreateSession()
+		if err != nil {
+			panic(err)
+		}
 
 		// Just want to make sure no one makes a mistake with this code
 		if walker.Config.Cassandra.Keyspace == "walker" {
 			panic("Not allowed to spoof the walker keyspace")
 		}
-		err := db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
+		err = db.Query(fmt.Sprintf("DROP KEYSPACE IF EXISTS %s", walker.Config.Cassandra.Keyspace)).Exec()
 		if err != nil {
 			panic(fmt.Errorf("Failed to drop %s keyspace: %v", walker.Config.Cassandra.Keyspace, err))
 		}
@@ -238,7 +237,15 @@ func getDs(t *testing.T) *console.CqlModel {
 		if err != nil {
 			t.Fatalf(err.Error())
 		}
+
+		db.Close()
 	})
+
+	ds, err := console.NewCqlModel()
+	if err != nil {
+		panic(err)
+	}
+	db := ds.Db
 
 	//
 	// Clear out the tables first

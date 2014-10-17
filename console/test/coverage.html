@@ -56,11 +56,13 @@
 				
 				<option value="file0">github.com/iParadigms/walker/console/controllers.go</option>
 				
-				<option value="file1">github.com/iParadigms/walker/console/model.go</option>
+				<option value="file1">github.com/iParadigms/walker/console/lifecycle.go</option>
 				
-				<option value="file2">github.com/iParadigms/walker/console/rendering.go</option>
+				<option value="file2">github.com/iParadigms/walker/console/model.go</option>
 				
-				<option value="file3">github.com/iParadigms/walker/console/spoof.go</option>
+				<option value="file3">github.com/iParadigms/walker/console/rendering.go</option>
+				
+				<option value="file4">github.com/iParadigms/walker/console/spoof.go</option>
 				
 				</select>
 			</div>
@@ -534,7 +536,237 @@ func urlCleanse(url string) string <span class="cov8" title="1">{
 }
 </pre>
 		
-		<pre class="file" id="file1" style="display: none">/*
+		<pre class="file" id="file1" style="display: none">package console
+
+import (
+        "fmt"
+        "net"
+        "net/http"
+        "os"
+        "os/signal"
+        "sync"
+        "syscall"
+        "time"
+
+        "code.google.com/p/log4go"
+        "github.com/codegangsta/negroni"
+        "github.com/gorilla/mux"
+        "github.com/iParadigms/walker"
+)
+
+//
+// Pulled the stopable listener from the link at:
+// http://www.hydrogen18.com/blog/stop-listening-http-server-go.html
+//
+type stoppableListener struct {
+        *net.TCPListener          //Wrapped listener
+        stopchan         chan int //Channel used only to indicate listener should shutdown
+}
+
+func newStopableListner(l net.Listener) (*stoppableListener, error) <span class="cov0" title="0">{
+        tcpL, ok := l.(*net.TCPListener)
+
+        if !ok </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("Cannot wrap listener")
+        }</span>
+
+        <span class="cov0" title="0">retval := &amp;stoppableListener{}
+        retval.TCPListener = tcpL
+        retval.stopchan = make(chan int)
+
+        return retval, nil</span>
+}
+
+var stoppedErrorMark = fmt.Errorf("Listener stopped")
+var stopingPollTime time.Duration = 1 * time.Second
+
+func (sl *stoppableListener) Accept() (net.Conn, error) <span class="cov0" title="0">{
+
+        for </span><span class="cov0" title="0">{
+                //Wait up to one second for a new connection
+                sl.TCPListener.SetDeadline(time.Now().Add(stopingPollTime))
+                newConn, err := sl.TCPListener.AcceptTCP()
+
+                //Check for the channel being closed
+                select </span>{
+                <span class="cov0" title="0">case &lt;-sl.stopchan:
+                        return nil, stoppedErrorMark</span>
+                <span class="cov0" title="0">default:</span>
+                        //If the channel is still open, continue as normal
+                }
+
+                <span class="cov0" title="0">if err != nil </span><span class="cov0" title="0">{
+                        netErr, ok := err.(net.Error)
+
+                        //If this is a timeout, then continue to wait for
+                        //new connections
+                        if ok &amp;&amp; netErr.Timeout() &amp;&amp; netErr.Temporary() </span><span class="cov0" title="0">{
+                                continue</span>
+                        }
+                }
+
+                // Emulate ListenAndServer (This code is taken from http://golang.org/src/pkg/net/http/server.go)
+                <span class="cov0" title="0">newConn.SetKeepAlive(true)
+                newConn.SetKeepAlivePeriod(3 * time.Minute)
+
+                return newConn, err</span>
+        }
+}
+
+func (sl *stoppableListener) stop() <span class="cov0" title="0">{
+        close(sl.stopchan)
+}</span>
+
+//
+// We need to be able to keep track of outstanding handler go-routines
+//
+var shutdownWaitGroup sync.WaitGroup
+var shutdownChannel chan struct{}
+
+//buildControllerCounter will wrap a handler, and count outstanding handlers to make sure they
+// are all complete. We could time this out if we have straggler handlers. But I see no evidence
+// that is needed right now.
+func buildControllerCounter(toWrap func(w http.ResponseWriter, req *http.Request)) func(w http.ResponseWriter, req *http.Request) <span class="cov0" title="0">{
+        return func(w http.ResponseWriter, req *http.Request) </span><span class="cov0" title="0">{
+                shutdownWaitGroup.Add(1)
+                defer shutdownWaitGroup.Done()
+                toWrap(w, req)
+        }</span>
+}
+
+func isDir(path string) bool <span class="cov0" title="0">{
+        info, err := os.Stat(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+        <span class="cov0" title="0">return info.IsDir()</span>
+}
+
+// Start the console. NOTE: we only support a single instance of console
+// at a time. You must match all your Start() calls with Stop() calls or else
+// bad things happen.
+func Start() <span class="cov0" title="0">{
+        shutdownChannel = make(chan struct{})
+        shutdownWaitGroup = sync.WaitGroup{}
+
+        shutdownWaitGroup.Add(1)
+        go func() </span><span class="cov0" title="0">{
+                defer shutdownWaitGroup.Done()
+
+                //
+                // Do some resource sanity
+                //
+                if !isDir(walker.Config.Console.TemplateDirectory) </span><span class="cov0" title="0">{
+                        log4go.Error("CONSOLE PANIC: Unable to locate templates in directory %q", walker.Config.Console.TemplateDirectory)
+                }</span> <span class="cov0" title="0">else {
+                        log4go.Info("Console setting templates directory to %q", walker.Config.Console.TemplateDirectory)
+                }</span>
+
+                <span class="cov0" title="0">if !isDir(walker.Config.Console.PublicFolder) </span><span class="cov0" title="0">{
+                        log4go.Error("CONSOLE PANIC: Unable to locate public folder in directory %q", walker.Config.Console.PublicFolder)
+                }</span> <span class="cov0" title="0">else {
+                        log4go.Info("Console setting public folder to %q", walker.Config.Console.PublicFolder)
+                }</span>
+
+                //
+                // Set up data store
+                //
+                <span class="cov0" title="0">ds, err := NewCqlModel()
+                if err != nil </span><span class="cov0" title="0">{
+                        panic(fmt.Errorf("Failed to start data source: %v", err))
+                }</span>
+                <span class="cov0" title="0">DS = ds
+                defer ds.Close()
+
+                //
+                // Set up template renderer
+                //
+                BuildRender()
+
+                //
+                // Set up router to point to controllers
+                //
+                router := mux.NewRouter()
+                routes := Routes()
+                for _, route := range routes </span><span class="cov0" title="0">{
+                        log4go.Info("Registering path %s", route.Path)
+                        router.HandleFunc(route.Path, buildControllerCounter(route.Controller))
+                }</span>
+
+                //
+                // Set up middleware
+                //
+                <span class="cov0" title="0">neg := negroni.New(negroni.NewRecovery(), negroni.NewLogger(), negroni.NewStatic(http.Dir(walker.Config.Console.PublicFolder)))
+                neg.UseHandler(router)
+
+                //
+                // Set up stopable listener apparatus
+                //
+                port := walker.Config.Console.Port
+
+                // Build a stock tcp listener
+                originalListener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+                if err != nil </span><span class="cov0" title="0">{
+                        log4go.Error("Startup error: %v", err)
+                        panic(err)
+                }</span>
+
+                // Now wrap that listener to include stop functionality
+                <span class="cov0" title="0">stopper, err := newStopableListner(originalListener)
+                if err != nil </span><span class="cov0" title="0">{
+                        log4go.Error("Startup error: %v", err)
+                        panic(err)
+                }</span>
+
+                //
+                // Shutdown server on signal or if shutdownChannel is closed
+                //
+                <span class="cov0" title="0">stop := make(chan os.Signal)
+                signal.Notify(stop, syscall.SIGINT)
+                go func() </span><span class="cov0" title="0">{
+                        select </span>{
+                        <span class="cov0" title="0">case &lt;-stop:
+                                log4go.Info("Console caught SIGINT")</span>
+                        <span class="cov0" title="0">case &lt;-shutdownChannel:</span>
+                        }
+                        <span class="cov0" title="0">stopper.stop()</span>
+                }()
+
+                //
+                // Listen and Serve
+                //
+                <span class="cov0" title="0">server := http.Server{
+                        Addr:    fmt.Sprintf(":%d", port),
+                        Handler: neg,
+                }
+                log4go.Info("Console starting up address http://127.0.0.1:%d/", port)
+
+                // this call will block until stopper.stop() is called
+                server.Serve(stopper)
+
+                log4go.Info("Console stopped listening to http://127.0.0.1:%d/", port)
+                log4go.Info("Console shutting down ...")
+                return</span>
+        }()
+}
+
+//Stop will stop the console from running. Currently unused, but I'm leaving it here for now, as
+// it seems like something one might want to be able to do.
+func Stop() <span class="cov0" title="0">{
+        close(shutdownChannel)
+        shutdownWaitGroup.Wait()
+        log4go.Info("Console shutdown complete")
+}</span>
+
+//Run will run console until SIGINT is caught
+func Run() <span class="cov0" title="0">{
+        Start()
+        shutdownWaitGroup.Wait()
+        log4go.Info("Console shutdown complete")
+}</span>
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">/*
         Model contains data source related code.
 */
 
@@ -1087,7 +1319,7 @@ func (ds *CqlModel) FindLink(link string) (*LinkInfo, error) <span class="cov8" 
 }
 </pre>
 		
-		<pre class="file" id="file2" style="display: none">/*
+		<pre class="file" id="file3" style="display: none">/*
         This file contains functionality related to rendering templates
 */
 package console
@@ -1095,7 +1327,6 @@ package console
 import (
         "html/template"
         "net/http"
-        "os"
         "time"
 
         "code.google.com/p/log4go"
@@ -1162,15 +1393,8 @@ func fuuidFunc(u gocql.UUID) string <span class="cov8" title="1">{
 
 var Render *render.Render
 
-func BuildRender(verbose bool) <span class="cov8" title="1">{
-        pwd, err := os.Getwd()
-        if err != nil </span><span class="cov0" title="0">{
-                pwd = "UNKNOWN"
-        }</span>
-        <span class="cov8" title="1">if verbose </span><span class="cov0" title="0">{
-                log4go.Info("Setting templates directory to '%s' [pwd=%s]", walker.Config.Console.TemplateDirectory, pwd)
-        }</span>
-        <span class="cov8" title="1">Render = render.New(render.Options{
+func BuildRender() <span class="cov8" title="1">{
+        Render = render.New(render.Options{
                 Directory:     walker.Config.Console.TemplateDirectory,
                 Layout:        "layout",
                 IndentJSON:    true,
@@ -1186,8 +1410,8 @@ func BuildRender(verbose bool) <span class="cov8" title="1">{
                                 "yesOnTrue":   yesOnTrueFunc,
                         },
                 },
-        })</span>
-}
+        })
+}</span>
 
 func replyServerError(w http.ResponseWriter, err error) <span class="cov0" title="0">{
         log4go.Error("Rendering 500: %v", err)
@@ -1211,7 +1435,7 @@ func encode32(s string) string <span class="cov8" title="1">{
 }</span>
 </pre>
 		
-		<pre class="file" id="file3" style="display: none">/*
+		<pre class="file" id="file4" style="display: none">/*
         This file has some temporary code designed to populate a cassandra datastore
         with some test data. The code isn't a picture of beauty, but it won't live that long.
 */
