@@ -182,6 +182,11 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
 	}
 
+	if len(links) == 0 {
+		log4go.Info("No links to dispatch for %v", domain)
+		return nil
+	}
+
 	for _, u := range links {
 		dom, subdom, err := u.TLDPlusOneAndSubdomain()
 		if err != nil {
