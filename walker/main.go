@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/iParadigms/walker"
+	"github.com/iParadigms/walker/cmd"
 )
 
 func main() {
-	walker.Cmd.Execute()
+	cmd.Execute()
 }

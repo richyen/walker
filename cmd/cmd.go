@@ -1,4 +1,4 @@
-package walker
+package cmd
 
 import (
 	"fmt"
@@ -6,40 +6,58 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/iParadigms/walker"
 	"github.com/iParadigms/walker/console"
 	"github.com/spf13/cobra"
 )
 
-// Cmd provides an easy interface for creating walker binaries that use their
+// cmd provides an easy interface for creating walker binaries that use their
 // own Handler, Datastore, or Dispatcher. A crawler that uses the default for
 // each of these requires simply:
 //
 //		func main() {
-//			walker.Cmd.Execute()
+//			cmd.Execute()
 //		}
 //
 // To create your own binary that uses walker's flags but has its own handler:
 //
 //		func main() {
-//			walker.Cmd.Handler = NewMyHandler()
-//			walker.Cmd.Execute()
+//			cmd.Handler(NewMyHandler())
+//          cmd.Execute()
 //		}
 //
 // Likewise if you want to set your own Datastore and Dispatcher:
 //
 //		func main() {
-//			walker.Cmd.Datastore = NewMyDatastore()
-//			walker.Cmd.Dispatcher = NewMyDatastore()
-//			walker.Cmd.Execute()
+//          cmd.DataStore(NewMyDatastore())
+//          cmd.Dispatcher(NewMyDatastore())
+//          cmd.Execute()
 //		}
 //
-// walker.Cmd.Execute() blocks until the program has completed (usually by
+// cmd.Execute() blocks until the program has completed (usually by
 // being shutdown gracefully via SIGINT).
-var Cmd struct {
+
+var commander struct {
 	*cobra.Command
-	Handler    Handler
-	Datastore  Datastore
-	Dispatcher Dispatcher
+	Handler    walker.Handler
+	Datastore  walker.Datastore
+	Dispatcher walker.Dispatcher
+}
+
+func Handler(h walker.Handler) {
+	commander.Handler = h
+}
+
+func Datastore(d walker.Datastore) {
+	commander.Datastore = d
+}
+
+func Dispatcher(d walker.Dispatcher) {
+	commander.Dispatcher = d
+}
+
+func Execute() {
+	commander.Execute()
 }
 
 func fatalf(format string, args ...interface{}) {
@@ -58,7 +76,7 @@ func init() {
 		"config", "c", "", "path to a config file to load")
 	readConfig := func() {
 		if config != "" {
-			if err := ReadConfigFile(config); err != nil {
+			if err := walker.ReadConfigFile(config); err != nil {
 				panic(err.Error())
 			}
 		}
@@ -71,28 +89,28 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
 
-			if Cmd.Datastore == nil {
-				ds, err := NewCassandraDatastore()
+			if commander.Datastore == nil {
+				ds, err := walker.NewCassandraDatastore()
 				if err != nil {
 					fatalf("Failed creating Cassandra datastore: %v", err)
 				}
-				Cmd.Datastore = ds
-				Cmd.Dispatcher = &CassandraDispatcher{}
+				commander.Datastore = ds
+				commander.Dispatcher = &walker.CassandraDispatcher{}
 			}
 
-			if Cmd.Handler == nil {
-				Cmd.Handler = &SimpleWriterHandler{}
+			if commander.Handler == nil {
+				commander.Handler = &walker.SimpleWriterHandler{}
 			}
 
-			manager := &FetchManager{
-				Datastore: Cmd.Datastore,
-				Handler:   Cmd.Handler,
+			manager := &walker.FetchManager{
+				Datastore: commander.Datastore,
+				Handler:   commander.Handler,
 			}
 			go manager.Start()
 
-			if Cmd.Dispatcher != nil {
+			if commander.Dispatcher != nil {
 				go func() {
-					err := Cmd.Dispatcher.StartDispatcher()
+					err := commander.Dispatcher.StartDispatcher()
 					if err != nil {
 						panic(err.Error())
 					}
@@ -107,8 +125,8 @@ func init() {
 			signal.Notify(sig, syscall.SIGINT)
 			<-sig
 
-			if Cmd.Dispatcher != nil {
-				Cmd.Dispatcher.StopDispatcher()
+			if commander.Dispatcher != nil {
+				commander.Dispatcher.StopDispatcher()
 			}
 			manager.Stop()
 		},
@@ -123,22 +141,22 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
 
-			if Cmd.Datastore == nil {
-				ds, err := NewCassandraDatastore()
+			if commander.Datastore == nil {
+				ds, err := walker.NewCassandraDatastore()
 				if err != nil {
 					fatalf("Failed creating Cassandra datastore: %v", err)
 				}
-				Cmd.Datastore = ds
-				Cmd.Dispatcher = &CassandraDispatcher{}
+				commander.Datastore = ds
+				commander.Dispatcher = &walker.CassandraDispatcher{}
 			}
 
-			if Cmd.Handler == nil {
-				Cmd.Handler = &SimpleWriterHandler{}
+			if commander.Handler == nil {
+				commander.Handler = &walker.SimpleWriterHandler{}
 			}
 
-			manager := &FetchManager{
-				Datastore: Cmd.Datastore,
-				Handler:   Cmd.Handler,
+			manager := &walker.FetchManager{
+				Datastore: commander.Datastore,
+				Handler:   commander.Handler,
 			}
 			go manager.Start()
 
@@ -157,12 +175,12 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
 
-			if Cmd.Dispatcher == nil {
-				Cmd.Dispatcher = &CassandraDispatcher{}
+			if commander.Dispatcher == nil {
+				commander.Dispatcher = &walker.CassandraDispatcher{}
 			}
 
 			go func() {
-				err := Cmd.Dispatcher.StartDispatcher()
+				err := commander.Dispatcher.StartDispatcher()
 				if err != nil {
 					panic(err.Error())
 				}
@@ -172,7 +190,7 @@ func init() {
 			signal.Notify(sig, syscall.SIGINT)
 			<-sig
 
-			Cmd.Dispatcher.StopDispatcher()
+			commander.Dispatcher.StopDispatcher()
 		},
 	}
 	walkerCommand.AddCommand(dispatchCommand)
@@ -191,27 +209,27 @@ crawl, regardless of the add_new_domains configuration setting.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
 
-			orig := Config.AddNewDomains
-			defer func() { Config.AddNewDomains = orig }()
-			Config.AddNewDomains = true
+			orig := walker.Config.AddNewDomains
+			defer func() { walker.Config.AddNewDomains = orig }()
+			walker.Config.AddNewDomains = true
 
 			if seedURL == "" {
 				fatalf("Seed URL needed to execute; add on with --url/-u")
 			}
-			u, err := ParseURL(seedURL)
+			u, err := walker.ParseURL(seedURL)
 			if err != nil {
 				fatalf("Could not parse %v as a url: %v", seedURL, err)
 			}
 
-			if Cmd.Datastore == nil {
-				ds, err := NewCassandraDatastore()
+			if commander.Datastore == nil {
+				ds, err := walker.NewCassandraDatastore()
 				if err != nil {
 					fatalf("Failed creating Cassandra datastore: %v", err)
 				}
-				Cmd.Datastore = ds
+				commander.Datastore = ds
 			}
 
-			Cmd.Datastore.StoreParsedURL(u, nil)
+			commander.Datastore.StoreParsedURL(u, nil)
 		},
 	}
 	seedCommand.Flags().StringVarP(&seedURL, "url", "u", "", "URL to add as a seed")
@@ -241,7 +259,7 @@ Useful for something like:
 			}
 			defer out.Close()
 
-			schema, err := GetCassandraSchema()
+			schema, err := walker.GetCassandraSchema()
 			if err != nil {
 				panic(err.Error())
 			}
@@ -251,5 +269,23 @@ Useful for something like:
 	schemaCommand.Flags().StringVarP(&outfile, "out", "o", "", "File to write output to")
 	walkerCommand.AddCommand(schemaCommand)
 
-	Cmd.Command = walkerCommand
+	var spoofData bool = false
+	consoleCommand := &cobra.Command{
+		Use:   "console",
+		Short: "Start up the walker console",
+		Run: func(cmd *cobra.Command, args []string) {
+			if spoofData {
+				walker.Config.Cassandra.Keyspace = "walker_spoofed"
+				walker.Config.Cassandra.Hosts = []string{"localhost"}
+				walker.Config.Cassandra.ReplicationFactor = 1
+				console.SpoofData()
+			}
+			readConfig()
+			console.Run()
+		},
+	}
+	consoleCommand.Flags().BoolVarP(&spoofData, "spoof", "s", false, "Populate Cassandra with some test data (temporary flag, will go away soon)")
+	walkerCommand.AddCommand(consoleCommand)
+
+	commander.Command = walkerCommand
 }

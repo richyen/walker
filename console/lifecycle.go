@@ -111,6 +111,8 @@ func Start() {
 	// this Add is being offset in the Listen and Serve part of the next go-routine
 	shutdownWaitGroup.Add(1)
 	go func() {
+		defer shutdownWaitGroup.Done()
+
 		//
 		// Do some resource sanity
 		//
@@ -193,7 +195,6 @@ func Start() {
 		//
 		// Listen and Serve
 		//
-		defer shutdownWaitGroup.Done() // this offsets the Add(1) above
 		server := http.Server{
 			Addr:    fmt.Sprintf(":%d", port),
 			Handler: neg,
@@ -209,14 +210,12 @@ func Start() {
 	}()
 }
 
-//Stop will stop the console from running. We can time this call out, but
-//we can never destroy the still-outstanding go-routines. I think the handlers
-//are short lived enough that this
-func Stop() {
-	close(shutdownChannel)
-	shutdownWaitGroup.Wait()
-	log4go.Info("Console shutdown complete")
-}
+//Stop will stop the console from running.
+// func Stop() {
+// 	close(shutdownChannel)
+// 	shutdownWaitGroup.Wait()
+// 	log4go.Info("Console shutdown complete")
+// }
 
 //Run will run console until SIGINT is caught
 func Run() {

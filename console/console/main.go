@@ -9,14 +9,14 @@ import (
 )
 
 func modifyConfigMain() {
-	walker.Config.Cassandra.Keyspace = "walker_spoofed"
-	walker.Config.Cassandra.Hosts = []string{"localhost"}
-	walker.Config.Cassandra.ReplicationFactor = 1
+
 }
 
 func main() {
 	if true {
-		modifyConfigMain()
+		walker.Config.Cassandra.Keyspace = "walker_spoofed"
+		walker.Config.Cassandra.Hosts = []string{"localhost"}
+		walker.Config.Cassandra.ReplicationFactor = 1
 		console.SpoofData()
 	}
 
