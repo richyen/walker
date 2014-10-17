@@ -131,8 +131,7 @@ func init() {
 			manager.Stop()
 		},
 	}
-	//XXX: I want D. Kinder to tell me what he wants to call the noConsole flag
-	crawlCommand.Flags().BoolVarP(&noConsole, "xconsole", "x", false, "Do not start the console")
+	crawlCommand.Flags().BoolVarP(&noConsole, "no-console", "C", false, "Do not start the console")
 	walkerCommand.AddCommand(crawlCommand)
 
 	fetchCommand := &cobra.Command{

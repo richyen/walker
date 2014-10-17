@@ -72,7 +72,7 @@ func TestCrawlCommand(t *testing.T) {
 
 	args := [][]string{
 		[]string{os.Args[0], "crawl"},
-		[]string{os.Args[0], "crawl", "--xconsole"},
+		[]string{os.Args[0], "crawl", "--no-console"},
 	}
 
 	for index := range args {
