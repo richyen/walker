@@ -387,15 +387,16 @@ func (ds *CqlModel) collectLinkInfos(linfos []LinkInfo, rtimes map[string]rememb
 			nindex = qq.ind
 			linfos[qq.ind] = linfo
 		} else {
+			// If you've reached the limit, then we're all done
+			if len(linfos) >= limit {
+				break
+			}
 			linfos = append(linfos, linfo)
 			nindex = len(linfos) - 1
 		}
 		rtimes[urlString] = rememberTimes{ctm: crawlTime, ind: nindex}
-
-		if len(linfos) >= limit {
-			break
-		}
 	}
+
 	return linfos, nil
 }
 
