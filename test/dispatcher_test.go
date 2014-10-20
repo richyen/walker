@@ -166,3 +166,26 @@ func TestDispatcherBasic(t *testing.T) {
 		}
 	}
 }
+
+func TestDispatcherDispatchedFalseIfNoLinks(t *testing.T) {
+	db := getDB(t)
+	q := db.Query(`INSERT INTO domain_info (dom, claim_tok, priority, dispatched)
+					VALUES (?, ?, ?, ?)`, "test.com", gocql.UUID{}, 0, false)
+	if err := q.Exec(); err != nil {
+		t.Fatalf("Failed to insert test domain info: %v\nQuery: %v", err, q)
+	}
+
+	d := &walker.CassandraDispatcher{}
+	go d.StartDispatcher()
+	time.Sleep(time.Millisecond * 10)
+	d.StopDispatcher()
+
+	q = db.Query(`SELECT dispatched FROM domain_info WHERE dom = ?`, "test.com")
+	var dispatched bool
+	if err := q.Scan(&dispatched); err != nil {
+		t.Fatalf("Failed to find domain info: %v\nQuery: %v", err, q)
+	}
+	if dispatched {
+		t.Errorf("`dispatched` flag set to true when no links existed")
+	}
+}
