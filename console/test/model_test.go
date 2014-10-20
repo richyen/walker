@@ -129,6 +129,8 @@ var bazLinkHistoryInit = []console.LinkInfo{
 	},
 }
 
+var bazSeed string
+
 type findTest struct {
 	omittest bool
 	tag      string
@@ -352,6 +354,35 @@ func getDs(t *testing.T) *console.CqlModel {
 	err = itr.Close()
 	if err != nil {
 		panic(fmt.Errorf("bazLinkHistoryOrder iterator error: %v", err))
+	}
+
+	itr = db.Query("SELECT dom, subdom, path, proto FROM links").Iter()
+	var foundBaz = false
+	var beforeBazComLink *walker.URL = nil
+	for itr.Scan(&domain, &subdomain, &path, &protocol) {
+		url, err := walker.CreateURL(domain, subdomain, path, protocol, walker.NotYetCrawled)
+		if err != nil {
+			panic(err)
+		}
+
+		if domain == "baz.com" {
+			foundBaz = true
+			break
+		}
+
+		beforeBazComLink = url
+	}
+	if !foundBaz {
+		panic("Unable to find domain before baz.com")
+	}
+	err = itr.Close()
+	if err != nil {
+		panic(fmt.Errorf("beforeBazCom link iterator error: %v", err))
+	}
+	if beforeBazComLink == nil {
+		bazSeed = ""
+	} else {
+		bazSeed = beforeBazComLink.String()
 	}
 
 	return ds
@@ -677,6 +708,7 @@ func TestListLinks(t *testing.T) {
 
 	store.Close()
 }
+
 func TestListLinkHistorical(t *testing.T) {
 	store := getDs(t)
 
@@ -862,4 +894,52 @@ func TestInsertLinks(t *testing.T) {
 		}
 	}
 
+}
+
+func TestCloseToLimitBug(t *testing.T) {
+	store := getDs(t)
+	tests := []linkTest{
+		linkTest{
+			domain:   "baz.com",
+			tag:      "bug exposed with limit 1",
+			seedUrl:  bazSeed,
+			limit:    1,
+			expected: []console.LinkInfo{bazLinkHistoryOrder[len(bazLinkHistoryOrder)-1]},
+		},
+	}
+
+	// run the tests
+	for _, test := range tests {
+		if test.omittest {
+			continue
+		}
+		linfos, err := store.ListLinks(test.domain, test.seedUrl, test.limit)
+		if err != nil {
+			t.Errorf("ListLinks for tag %s direct error %v", test.tag, err)
+			continue
+		}
+		if len(linfos) != len(test.expected) {
+			t.Errorf("ListLinks for tag %s length mismatch got %d, expected %d", test.tag, len(linfos), len(test.expected))
+			continue
+		}
+		for i := range linfos {
+			got := linfos[i]
+			exp := test.expected[i]
+			if got.Url != exp.Url {
+				t.Errorf("TestCloseToLimitBug %s Url mismatch got %v, expected %v", test.tag, got.Url, exp.Url)
+			}
+			if got.Status != exp.Status {
+				t.Errorf("TestCloseToLimitBug %s Status mismatch got %v, expected %v", test.tag, got.Status, exp.Status)
+			}
+			if got.Error != exp.Error {
+				t.Errorf("TestCloseToLimitBug %s Error mismatch got %v, expected %v", test.tag, got.Error, exp.Error)
+			}
+			if got.RobotsExcluded != exp.RobotsExcluded {
+				t.Errorf("TestCloseToLimitBug %s RobotsExcluded mismatch got %v, expected %v", test.tag, got.RobotsExcluded, exp.RobotsExcluded)
+			}
+			if !timeClose(got.CrawlTime, exp.CrawlTime) {
+				t.Errorf("TestCloseToLimitBug %s CrawlTime mismatch got %v, expected %v", test.tag, got.CrawlTime, exp.CrawlTime)
+			}
+		}
+	}
 }

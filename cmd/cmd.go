@@ -15,49 +15,59 @@ import (
 // own Handler, Datastore, or Dispatcher. A crawler that uses the default for
 // each of these requires simply:
 //
-//		func main() {
-//			cmd.Execute()
-//		}
+//  func main() {
+//      cmd.Execute()
+//  }
 //
 // To create your own binary that uses walker's flags but has its own handler:
 //
-//		func main() {
-//			cmd.Handler(NewMyHandler())
-//          cmd.Execute()
-//		}
+//  func main() {
+//      cmd.Handler(NewMyHandler())
+//      cmd.Execute()
+//  }
 //
 // Likewise if you want to set your own Datastore and Dispatcher:
 //
-//		func main() {
-//          cmd.DataStore(NewMyDatastore())
-//          cmd.Dispatcher(NewMyDatastore())
-//          cmd.Execute()
-//		}
+//  func main() {
+//      cmd.DataStore(NewMyDatastore())
+//      cmd.Dispatcher(NewMyDatastore())
+//      cmd.Execute()
+//  }
 //
 // cmd.Execute() blocks until the program has completed (usually by
 // being shutdown gracefully via SIGINT).
 
+//
+// P U B L I C
+//
+// Handler sets the global handler for this process
+func Handler(h walker.Handler) {
+	commander.Handler = h
+}
+
+// Datastore sets the global datastore for this process
+func Datastore(d walker.Datastore) {
+	commander.Datastore = d
+}
+
+// Dispatcher sets the global dispatcher for this process
+func Dispatcher(d walker.Dispatcher) {
+	commander.Dispatcher = d
+}
+
+// Execute will run the command specified by the command line
+func Execute() {
+	commander.Execute()
+}
+
+//
+// P R I V A T E
+//
 var commander struct {
 	*cobra.Command
 	Handler    walker.Handler
 	Datastore  walker.Datastore
 	Dispatcher walker.Dispatcher
-}
-
-func Handler(h walker.Handler) {
-	commander.Handler = h
-}
-
-func Datastore(d walker.Datastore) {
-	commander.Datastore = d
-}
-
-func Dispatcher(d walker.Dispatcher) {
-	commander.Dispatcher = d
-}
-
-func Execute() {
-	commander.Execute()
 }
 
 func fatalf(format string, args ...interface{}) {
@@ -131,8 +141,7 @@ func init() {
 			manager.Stop()
 		},
 	}
-	//XXX: I want D. Kinder to tell me what he wants to call the noConsole flag
-	crawlCommand.Flags().BoolVarP(&noConsole, "xconsole", "x", false, "Do not start the console")
+	crawlCommand.Flags().BoolVarP(&noConsole, "no-console", "C", false, "Do not start the console")
 	walkerCommand.AddCommand(crawlCommand)
 
 	fetchCommand := &cobra.Command{
@@ -200,9 +209,9 @@ func init() {
 		Use:   "seed",
 		Short: "add a seed URL to the datastore",
 		Long: `Seed is useful for:
-	- Adding starter links to bootstrap a broad crawl
-	- Adding links when add_new_domains is false
-	- Adding any other link that needs to be crawled soon
+    - Adding starter links to bootstrap a broad crawl
+    - Adding links when add_new_domains is false
+    - Adding any other link that needs to be crawled soon
 
 This command will insert the provided link and also add its domain to the
 crawl, regardless of the add_new_domains configuration setting.`,
@@ -242,10 +251,10 @@ crawl, regardless of the add_new_domains configuration setting.`,
 		Long: `Schema prints the walker schema to stdout, substituting
 schema-relevant configuration items (ex. keyspace, replication factor).
 Useful for something like:
-	$ <edit walker.yaml as desired>
-	$ walker schema -o schema.cql
-	$ <edit schema.cql further as desired>
-	$ cqlsh -f schema.cql
+    $ <edit walker.yaml as desired>
+    $ walker schema -o schema.cql
+    $ <edit schema.cql further as desired>
+    $ cqlsh -f schema.cql
 `,
 		Run: func(cmd *cobra.Command, args []string) {
 			readConfig()
@@ -269,22 +278,14 @@ Useful for something like:
 	schemaCommand.Flags().StringVarP(&outfile, "out", "o", "", "File to write output to")
 	walkerCommand.AddCommand(schemaCommand)
 
-	var spoofData bool = false
 	consoleCommand := &cobra.Command{
 		Use:   "console",
 		Short: "Start up the walker console",
 		Run: func(cmd *cobra.Command, args []string) {
-			if spoofData {
-				walker.Config.Cassandra.Keyspace = "walker_spoofed"
-				walker.Config.Cassandra.Hosts = []string{"localhost"}
-				walker.Config.Cassandra.ReplicationFactor = 1
-				console.SpoofData()
-			}
 			readConfig()
 			console.Run()
 		},
 	}
-	consoleCommand.Flags().BoolVarP(&spoofData, "spoof", "s", false, "Populate Cassandra with some test data (temporary flag, will go away soon)")
 	walkerCommand.AddCommand(consoleCommand)
 
 	commander.Command = walkerCommand

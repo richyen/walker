@@ -119,13 +119,25 @@ func Start() {
 		// Do some resource sanity
 		//
 		if !isDir(walker.Config.Console.TemplateDirectory) {
-			log4go.Error("CONSOLE PANIC: Unable to locate templates in directory %q", walker.Config.Console.TemplateDirectory)
+			dir, err := os.Getwd()
+			if err != nil {
+				dir = "UNKNOWN"
+			}
+			err = fmt.Errorf("Unable to locate templates in directory %q (cwd=%q)", walker.Config.Console.TemplateDirectory, dir)
+			log4go.Error("CONSOLE PANIC: %v", err)
+			panic(err)
 		} else {
 			log4go.Info("Console setting templates directory to %q", walker.Config.Console.TemplateDirectory)
 		}
 
 		if !isDir(walker.Config.Console.PublicFolder) {
-			log4go.Error("CONSOLE PANIC: Unable to locate public folder in directory %q", walker.Config.Console.PublicFolder)
+			dir, err := os.Getwd()
+			if err != nil {
+				dir = "UNKNOWN"
+			}
+			err = fmt.Errorf("Unable to locate public folder in directory %q (cwd=%q)", walker.Config.Console.PublicFolder, dir)
+			log4go.Error("CONSOLE PANIC: %v", err)
+			panic(err)
 		} else {
 			log4go.Info("Console setting public folder to %q", walker.Config.Console.PublicFolder)
 		}
