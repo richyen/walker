@@ -278,22 +278,14 @@ Useful for something like:
 	schemaCommand.Flags().StringVarP(&outfile, "out", "o", "", "File to write output to")
 	walkerCommand.AddCommand(schemaCommand)
 
-	var spoofData bool = false
 	consoleCommand := &cobra.Command{
 		Use:   "console",
 		Short: "Start up the walker console",
 		Run: func(cmd *cobra.Command, args []string) {
-			if spoofData {
-				walker.Config.Cassandra.Keyspace = "walker_spoofed"
-				walker.Config.Cassandra.Hosts = []string{"localhost"}
-				walker.Config.Cassandra.ReplicationFactor = 1
-				console.SpoofData()
-			}
 			readConfig()
 			console.Run()
 		},
 	}
-	consoleCommand.Flags().BoolVarP(&spoofData, "spoof", "s", false, "Populate Cassandra with some test data (temporary flag, will go away soon)")
 	walkerCommand.AddCommand(consoleCommand)
 
 	commander.Command = walkerCommand
