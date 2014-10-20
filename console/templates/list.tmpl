@@ -1,0 +1,35 @@
+
+<div style="width: 80%;" class="row">
+    <h2>List of Domains</h2>
+
+    <table class="console-table table table-striped table-condensed table-bordered">
+        <thead> 
+          <td class="col-xs-5"> Domain </td>
+          <td class="col-xs-1" style="text-align: center;"> LinksTotal </td>
+          <td class="col-xs-1" style="text-align: center;"> LinksQueued </td>
+          <td class="col-xs-2" style="text-align: center;"> Excluded </td>
+          <td class="col-xs-3" style="text-align: center;"> TimeQueued </td>
+        </thead>
+        <tbody>
+        {{range .Domains}}
+            <tr> 
+              <td> <a href="/links/{{.Domain}}"> {{.Domain}} </a> </td>
+              <td style="text-align: center;"> {{.NumberLinksTotal}} </td>
+              <td style="text-align: center;"> {{.NumberLinksQueued}} </td>
+              <td style="text-align: center;"> {{yesOnFilled .ExcludeReason}} </td>
+              <td style="text-align: center;"> {{activeSince .TimeQueued}} </td>
+            </tr>
+        {{end}}
+        </tbody>
+    </table>
+</div>
+
+<div style="width: 80%;" class="row">
+    <a href="" class="col-xs-3 btn btn-info btn-large {{.PrevButtonClass}}" onclick="window.history.back()">
+          <i class="icon-white icon-backward"></i> Previous</a>
+
+    <div class="col-xs-1"></div>
+
+    <a href="/list/{{.Next}}" class="col-xs-3 btn btn-info btn-large {{.NextButtonClass}}">
+          <i class="icon-white icon-forward"></i> Next </a>
+</div>

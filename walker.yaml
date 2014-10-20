@@ -59,3 +59,10 @@
 #    keyspace: "walker"
 #    replication_factor: 3
 
+## Console specific config
+#console:
+#    port: 3000
+#    template_directory: console/templates
+#    public_folder: console/public
+
+
