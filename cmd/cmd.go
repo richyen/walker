@@ -37,27 +37,37 @@ import (
 // cmd.Execute() blocks until the program has completed (usually by
 // being shutdown gracefully via SIGINT).
 
+//
+// P U B L I C
+//
+// Handler sets the global handler for this process
+func Handler(h walker.Handler) {
+	commander.Handler = h
+}
+
+// Datastore sets the global datastore for this process
+func Datastore(d walker.Datastore) {
+	commander.Datastore = d
+}
+
+// Dispatcher sets the global dispatcher for this process
+func Dispatcher(d walker.Dispatcher) {
+	commander.Dispatcher = d
+}
+
+// Execute will run the command specified by the command line
+func Execute() {
+	commander.Execute()
+}
+
+//
+// P R I V A T E
+//
 var commander struct {
 	*cobra.Command
 	Handler    walker.Handler
 	Datastore  walker.Datastore
 	Dispatcher walker.Dispatcher
-}
-
-func Handler(h walker.Handler) {
-	commander.Handler = h
-}
-
-func Datastore(d walker.Datastore) {
-	commander.Datastore = d
-}
-
-func Dispatcher(d walker.Dispatcher) {
-	commander.Dispatcher = d
-}
-
-func Execute() {
-	commander.Execute()
 }
 
 func fatalf(format string, args ...interface{}) {
