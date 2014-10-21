@@ -47,6 +47,12 @@ type WalkerConfig struct {
 	NumSimultaneousFetchers int  `yaml:"num_simultaneous_fetchers"`
 	BlacklistPrivateIPs     bool `yaml:"blacklist_private_ips"`
 
+	Dispatcher struct {
+		MaxLinksPerSegment   int     `yaml:"num_links_per_segment"`
+		RefreshRatio         float32 `yaml:"refresh_ratio"`
+		NumConcurrentDomains int     `yaml:"num_concurrent_domains"`
+	} `yaml:"dispatcher"`
+
 	// TODO: consider these config items
 	// allowed schemes (file://, https://, etc.)
 	// allowed return content types (or file extensions)
@@ -104,6 +110,10 @@ func SetDefaultConfig() {
 	Config.MaxLinksPerPage = 1000
 	Config.NumSimultaneousFetchers = 10
 	Config.BlacklistPrivateIPs = true
+
+	Config.Dispatcher.MaxLinksPerSegment = 500
+	Config.Dispatcher.RefreshRatio = 0.8
+	Config.Dispatcher.NumConcurrentDomains = 1
 
 	Config.Cassandra.Hosts = []string{"localhost"}
 	Config.Cassandra.Keyspace = "walker"

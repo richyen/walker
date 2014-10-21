@@ -1,12 +1,12 @@
 package walker
 
 import (
+	"container/heap"
 	"fmt"
 	"sync"
 	"time"
 
 	"code.google.com/p/log4go"
-
 	"github.com/gocql/gocql"
 )
 
@@ -64,9 +64,7 @@ func (d *CassandraDispatcher) StartDispatcher() error {
 	d.quit = make(chan struct{})
 	d.domains = make(chan string)
 
-	//TODO: add Concurrency to config
-	concurrency := 1
-	for i := 0; i < concurrency; i++ {
+	for i := 0; i < Config.Dispatcher.NumConcurrentDomains; i++ {
 		d.finishWG.Add(1)
 		go func() {
 			d.generateRoutine()
@@ -149,37 +147,129 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	log4go.Info("Generating a crawl segment for %v", domain)
 	iter := d.db.Query(`SELECT dom, subdom, path, proto, time
 						FROM links WHERE dom = ?
-						ORDER BY subdom, path, proto, time`, domain).Iter()
-	var linkdomain, subdomain, path, protocol string
-	var crawl_time time.Time
-	links := make(map[string]*URL)
-	for iter.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time) {
-		u, err := CreateURL(linkdomain, subdomain, path, protocol, crawl_time)
-		if err != nil {
-			log4go.Error(err.Error())
-			continue
+						ORDER BY subdom, path, proto, time, getnow`, domain).Iter()
+
+	//
+	// Three lists to hold the 3 link types: (a) getNow links (b) uncrawled links (c) crawled links
+	//
+	var getNowLinks []*URL
+	var uncrawledLinks []*URL
+	var crawledLinks PriorityUrl
+	heap.Init(&crawledLinks)
+
+	//
+	// Cell captures all the information for a link in one place
+	//
+	type Cell struct {
+		dom, subdom, path, proto string
+		crawl_time               time.Time
+		getnow                   bool
+	}
+
+	cell_equal := func(l *Cell, r *Cell) bool {
+		return l.dom == r.dom &&
+			l.subdom == r.subdom &&
+			l.path == r.path &&
+			l.proto == r.proto
+	}
+
+	//
+	// Some integer handling functions
+	//
+	imax := func(l int, r int) int {
+		if l < r {
+			return r
+		} else {
+			return l
+		}
+	}
+	imin := func(l int, r int) int {
+		if l > r {
+			return r
+		} else {
+			return l
+		}
+	}
+
+	//
+	// Do the scan
+	//
+	var limit = Config.Dispatcher.MaxLinksPerSegment
+	var start = true
+	var current Cell
+	var previous Cell
+	for iter.Scan(&current.dom, &current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
+		if start {
+			previous = current
+			start = false
 		}
 
-		if crawl_time.Equal(NotYetCrawled) {
-			if len(links) >= 500 {
-				// Stop here because we've moved on to a new link
-				log4go.Fine("Hit 500 links, not adding any more to the segment")
-				break
+		// IMPL NOTE: So the trick here is that, within a given domain, the entries
+		// come out so that the crawl_time increases as you iterate. So in order to
+		// get the most recent link, simply take the last link in a series that shares
+		// dom, subdom, path, and protocol
+		if !cell_equal(&current, &previous) {
+
+			u, err := CreateURL(previous.dom, previous.subdom, previous.path, previous.proto, previous.crawl_time)
+			if err != nil {
+				log4go.Error(err.Error())
+				continue
 			}
 
-			log4go.Fine("Adding link to segment list: %#v", u)
-			links[u.String()] = u
-		} else {
-			// This means we've already crawled the link, so leave it out
-			// Because we order by crawl_time we won't hit the link again
-			// later with crawl_time == NotYetCrawled
+			if previous.getnow {
+				getNowLinks = append(getNowLinks, u)
+			} else if previous.crawl_time.Equal(NotYetCrawled) {
+				if len(uncrawledLinks) < limit {
+					uncrawledLinks = append(uncrawledLinks, u)
+				}
+			} else {
+				if crawledLinks.Len() < limit {
+					heap.Push(&crawledLinks, u)
+				}
+			}
 
-			log4go.Fine("Link already crawled, removing from segment list: %#v", u)
-			delete(links, u.String())
+			if len(getNowLinks) >= limit {
+				break
+			}
 		}
+
+		current = previous
 	}
 	if err := iter.Close(); err != nil {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
+	}
+
+	var links []*URL
+	links = append(links, getNowLinks...)
+	numRemain := limit - len(links)
+	if numRemain > 0 {
+		numUncrawled := imin(int(Config.Dispatcher.RefreshRatio*float32(numRemain)), len(uncrawledLinks))
+		if numUncrawled < len(uncrawledLinks) {
+			// This makes it so that the first numUnCrawled elements read from
+			// the data store are entered (in reverse order) onto segments
+			uncrawledLinks = uncrawledLinks[:numUncrawled]
+		}
+		numCrawled := imax(0, numRemain-numUncrawled)
+		for i := 0; i < numRemain; i++ {
+
+			if numUncrawled > 0 {
+				u := uncrawledLinks[len(uncrawledLinks)-1]
+				uncrawledLinks = uncrawledLinks[:len(uncrawledLinks)-1]
+				links = append(links, u)
+				numUncrawled--
+			}
+
+			if numCrawled > 0 {
+				u := heap.Pop(&crawledLinks).(*URL)
+				links = append(links, u)
+				numCrawled--
+			}
+
+			if numCrawled+numUncrawled <= 0 {
+				break
+			}
+		}
+
 	}
 
 	if len(links) == 0 {
@@ -187,16 +277,16 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		return nil
 	}
 
+	//
+	// Insert into segments
+	//
 	for _, u := range links {
+		log4go.Debug("Inserting link in segment: %v", u.String())
 		dom, subdom, err := u.TLDPlusOneAndSubdomain()
 		if err != nil {
-			// Since the link is already in our system this should not happen;
-			// consider doing something else about it
-			log4go.Debug("Failed to get domain/subdomain from %v not storing: %v", u, err)
-			continue
+			log4go.Error("generateSegment not inserting %v: %v", u, err)
+			return err
 		}
-
-		log4go.Debug("Inserting link in segment: %v", u)
 		err = d.db.Query(`INSERT INTO segments
 			(dom, subdom, path, proto, time)
 			VALUES (?, ?, ?, ?, ?)`,
@@ -205,6 +295,26 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			log4go.Error("Failed to insert link (%v), error: %v", u, err)
 		}
 	}
+
+	//
+	// Go back and clean out the getnow flag.
+	//
+	for _, u := range getNowLinks {
+		dom, subdom, err := u.TLDPlusOneAndSubdomain()
+		if err != nil {
+			log4go.Error("generateSegment not updateing %v: %v", u, err)
+			continue
+		}
+		err = d.db.Query(`UPDATE links SET getnow = false WHERE dom = ? AND subdom = ? AND path = ? AND proto = ? AND crawl_time = ?`,
+			dom, subdom, u.RequestURI(), u.Scheme, u.LastCrawled).Exec()
+		if err != nil {
+			log4go.Error("generateSegment failed update to %v: %v", u, err)
+		}
+	}
+
+	//
+	// Update dispatched flag
+	//
 	err := d.db.Query(`UPDATE domain_info SET dispatched = true WHERE dom = ?`, domain).Exec()
 	if err != nil {
 		return fmt.Errorf("error inserting %v to domains_to_crawl: %v", domain, err)
@@ -228,4 +338,40 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	//	return fmt.Errorf("error inserting links for segment %v: %v", domain, err)
 	//}
 	return nil
+}
+
+type PriorityUrl []*URL
+
+func (pq PriorityUrl) Len() int {
+	return len(pq)
+}
+
+func (pq PriorityUrl) Less(i, j int) bool {
+	return pq[i].LastCrawled.Before(pq[j].LastCrawled)
+}
+
+func (pq PriorityUrl) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+}
+
+func (pq *PriorityUrl) Push(x interface{}) {
+	*pq = append(*pq, x.(*URL))
+}
+
+func (pq *PriorityUrl) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	x := old[n-1]
+	*pq = old[0 : n-1]
+	return x
+}
+
+func PriorityUrlFooBar() {
+	var prio PriorityUrl
+	heap.Init(&prio)
+	heap.Push(&prio, &URL{})
+	heap.Push(&prio, &URL{})
+	for prio.Len() > 0 {
+		fmt.Printf(">> %v", heap.Pop(&prio))
+	}
 }
