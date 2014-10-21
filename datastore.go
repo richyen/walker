@@ -292,6 +292,18 @@ func (ds *CassandraDatastore) StoreParsedURL(u *URL, fr *FetchResults) {
 	}
 }
 
+// UnclaimAll iterates domains to unclaim them. Crawlers will unclaim domains
+// by themselves, but this is used in case crawlers crash or are killed and
+// have left domains claimed.
+func (ds *CassandraDatastore) UnclaimAll() error {
+	iter := ds.db.Query(`SELECT dom FROM domain_info WHERE dispatched = true`).Iter()
+	var dom string
+	for iter.Scan(&dom) {
+		ds.UnclaimHost(dom)
+	}
+	return iter.Close()
+}
+
 // addDomainIfNew expects a toplevel domain, no subdomain
 func (ds *CassandraDatastore) addDomainIfNew(domain string) {
 	_, ok := ds.addedDomains.Get(domain)
