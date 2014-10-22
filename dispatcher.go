@@ -141,21 +141,15 @@ func (d *CassandraDispatcher) generateRoutine() {
 // generateSegment reads links in for this domain, generates a segment for it,
 // and inserts the domain into domains_to_crawl (assuming a segment is ready to
 // go)
-//
-// This implementation is dumb, we're just scheduling the first 500 links we
-// haven't crawled yet. We never recrawl.
 func (d *CassandraDispatcher) generateSegment(domain string) error {
 	log4go.Info("Generating a crawl segment for %v", domain)
-	iter := d.db.Query(`SELECT dom, subdom, path, proto, time
-						FROM links WHERE dom = ?
-						ORDER BY subdom, path, proto, time, getnow`, domain).Iter()
 
 	//
-	// Three lists to hold the 3 link types: (a) getNow links (b) uncrawled links (c) crawled links
+	// Three lists to hold the 3 link types
 	//
-	var getNowLinks []*URL
-	var uncrawledLinks []*URL
-	var crawledLinks PriorityUrl
+	var getNowLinks []*URL       //links marked getnow
+	var uncrawledLinks []*URL    // links that haven't been crawled
+	var crawledLinks PriorityUrl // already crawled links, oldest links out first
 	heap.Init(&crawledLinks)
 
 	//
@@ -167,6 +161,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		getnow                   bool
 	}
 
+	// checks equality of two cells
 	cell_equal := func(l *Cell, r *Cell) bool {
 		return l.dom == r.dom &&
 			l.subdom == r.subdom &&
@@ -174,42 +169,53 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			l.proto == r.proto
 	}
 
-	//
-	// Some integer handling functions
-	//
-	// imax := func(l int, r int) int {
-	// 	if l < r {
-	// 		return r
-	// 	} else {
-	// 		return l
-	// 	}
-	// }
-	imin := func(l int, r int) int {
-		if l > r {
-			return r
-		} else {
-			return l
+	// cell push will push the argument cell onto one of the three link-lists.
+	// logs failure if CreateURL fails.
+	var limit = Config.Dispatcher.MaxLinksPerSegment
+	cell_push := func(c *Cell) {
+		u, err := CreateURL(c.dom, c.subdom, c.path, c.proto, c.crawl_time)
+		if err != nil {
+			log4go.Error("CreateURL: " + err.Error())
+			return
 		}
+
+		log4go.Error("PETE: pushing url %v with getnow = %v and NotYetCrawled = %v: %v", u.String(), c.getnow, c.crawl_time.Equal(NotYetCrawled), c.crawl_time)
+
+		if c.getnow {
+			getNowLinks = append(getNowLinks, u)
+		} else if c.crawl_time.Equal(NotYetCrawled) {
+			uncrawledLinks = append(uncrawledLinks, u)
+		} else {
+			heap.Push(&crawledLinks, u)
+		}
+		return
 	}
-	round := func(f float64) float64 {
+
+	//
+	// Some mathy type functions
+	//
+	round := func(f float64) int {
 		abs := math.Abs(f)
 		sign := f / abs
 		floor := math.Floor(abs)
 		if abs-floor >= 0.5 {
-			return sign * (floor + 1)
+			return int(sign * (floor + 1))
 		} else {
-			return sign * floor
+			return int(sign * floor)
 		}
 
 	}
 
 	//
-	// Do the scan
+	// Do the scan, and populate the 3 lists
 	//
-	var limit = Config.Dispatcher.MaxLinksPerSegment
 	var start = true
+	var finish = true
 	var current Cell
 	var previous Cell
+	iter := d.db.Query(`SELECT dom, subdom, path, proto, time, getnow
+						FROM links WHERE dom = ?
+						ORDER BY subdom, path, proto, time`, domain).Iter()
 	for iter.Scan(&current.dom, &current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
 		if start {
 			previous = current
@@ -221,35 +227,35 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		// get the most recent link, simply take the last link in a series that shares
 		// dom, subdom, path, and protocol
 		if !cell_equal(&current, &previous) {
-
-			u, err := CreateURL(previous.dom, previous.subdom, previous.path, previous.proto, previous.crawl_time)
-			if err != nil {
-				log4go.Error(err.Error())
-				continue
-			}
-
-			if previous.getnow {
-				getNowLinks = append(getNowLinks, u)
-			} else if previous.crawl_time.Equal(NotYetCrawled) {
-				if len(uncrawledLinks) < limit {
-					uncrawledLinks = append(uncrawledLinks, u)
-				}
-			} else {
-				if crawledLinks.Len() < limit {
-					heap.Push(&crawledLinks, u)
-				}
-			}
-
-			if len(getNowLinks) >= limit {
-				break
-			}
+			cell_push(&previous)
 		}
 
-		current = previous
+		previous = current
+
+		if len(getNowLinks) >= limit {
+			finish = false
+			break
+		}
+	}
+	if finish {
+		cell_push(&previous)
 	}
 	if err := iter.Close(); err != nil {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
 	}
+
+	//DEBUG
+	var save []*URL
+	theLen := crawledLinks.Len()
+	for i := 0; i < theLen; i++ {
+		u := heap.Pop(&crawledLinks).(*URL)
+		log4go.Error("PETE CRAWLEDLINK: %v -> %v", u.String(), u.LastCrawled)
+		save = append(save, u)
+	}
+	for _, u := range save {
+		heap.Push(&crawledLinks, u)
+	}
+	//DEBUG
 
 	//
 	// Merge the 3 link types
@@ -259,12 +265,28 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 
 	numRemain := limit - len(links)
 	if numRemain > 0 {
+		lenCrawled := crawledLinks.Len()
+		lenUncrawled := len(uncrawledLinks)
 		refreshDecimal := Config.Dispatcher.RefreshPercentage / 100.0
-		numCrawledF := round(refreshDecimal * float64(numRemain))
-		numCrawled := imin(int(numCrawledF), crawledLinks.Len())
-		numUncrawled := numRemain - numCrawled
-		for numCrawled+numUncrawled > 0 {
+		idealCrawled := round(refreshDecimal * float64(numRemain))
+		idealUncrawled := numRemain - idealCrawled
 
+		var numCrawled, numUncrawled int
+		if lenCrawled <= idealCrawled && lenUncrawled <= idealUncrawled {
+			numCrawled = lenCrawled
+			numUncrawled = lenUncrawled
+		} else if lenCrawled > idealCrawled && lenUncrawled > idealUncrawled {
+			numCrawled = idealCrawled
+			numUncrawled = idealUncrawled
+		} else if lenCrawled <= idealCrawled && lenUncrawled > idealUncrawled {
+			numCrawled = lenCrawled
+			numUncrawled = numRemain - lenCrawled
+		} else { //lenCrawled > idealCrawled && lenUncrawled <= idealUncrawled {
+			numCrawled = numRemain - lenUncrawled
+			numUncrawled = lenUncrawled
+		}
+
+		for numCrawled+numUncrawled > 0 {
 			if numUncrawled > 0 {
 				u := uncrawledLinks[numUncrawled-1]
 				links = append(links, u)
@@ -278,6 +300,18 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			}
 		}
 
+	}
+
+	for _, link := range getNowLinks {
+		log4go.Error("PETE getnow: %q", link.String())
+	}
+
+	for _, link := range uncrawledLinks {
+		log4go.Error("PETE uncrawl: %q", link.String())
+	}
+
+	for _, link := range links {
+		log4go.Error("PETE LINK: %q", link.String())
 	}
 
 	//
@@ -316,7 +350,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			log4go.Error("generateSegment not updateing %v: %v", u, err)
 			continue
 		}
-		err = d.db.Query(`UPDATE links SET getnow = false WHERE dom = ? AND subdom = ? AND path = ? AND proto = ? AND crawl_time = ?`,
+		err = d.db.Query(`UPDATE links SET getnow = false WHERE dom = ? AND subdom = ? AND path = ? AND proto = ? AND time = ?`,
 			dom, subdom, u.RequestURI(), u.Scheme, u.LastCrawled).Exec()
 		if err != nil {
 			log4go.Error("generateSegment failed update to %v: %v", u, err)
