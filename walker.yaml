@@ -48,15 +48,15 @@
 
 ## Dispatcher configuration
 #dispatcher:
-#    ## maximum number of links added to segments table per dispatch
+#    ## maximum number of links added to segments table per dispatch (must be >0)
 #    num_links_per_segment: 500
 #   
-#    ## The ideal ratio of #-not-yet-crawled-links/num_links_per_segment added per dispatch.
-#    ## So refresh_ratio = 0.75 means that 75% of the links added to segments will be not-yet-crawled
-#    ## to the extent possible.
-#    refresh_ratio: 0.8
+#    ## refresh_percentage is the percentage of links added per dispatch that have already been crawled.
+#    ## So refresh_percentage = 25 means that 25% of the links added to segments on the next dispatch
+#    ## will be refreshed (i.e. already crawled) links. This value must be >= 0 and <= 100.
+#    refresh_percentage: 25
 #
-#    ## How many concurrent dispatching threads will be run at once
+#    ## How many concurrent dispatching threads will be run at once (must be >0)
 #    num_concurrent_domains: 1
 
 # Cassandra configuration for the datastore.

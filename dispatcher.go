@@ -3,6 +3,7 @@ package walker
 import (
 	"container/heap"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -176,19 +177,30 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	//
 	// Some integer handling functions
 	//
-	imax := func(l int, r int) int {
-		if l < r {
-			return r
-		} else {
-			return l
-		}
-	}
+	// imax := func(l int, r int) int {
+	// 	if l < r {
+	// 		return r
+	// 	} else {
+	// 		return l
+	// 	}
+	// }
 	imin := func(l int, r int) int {
 		if l > r {
 			return r
 		} else {
 			return l
 		}
+	}
+	round := func(f float64) float64 {
+		abs := math.Abs(f)
+		sign := f / abs
+		floor := math.Floor(abs)
+		if abs-floor >= 0.5 {
+			return sign * (floor + 1)
+		} else {
+			return sign * floor
+		}
+
 	}
 
 	//
@@ -239,22 +251,22 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
 	}
 
+	//
+	// Merge the 3 link types
+	//
 	var links []*URL
 	links = append(links, getNowLinks...)
+
 	numRemain := limit - len(links)
 	if numRemain > 0 {
-		numUncrawled := imin(int(Config.Dispatcher.RefreshRatio*float32(numRemain)), len(uncrawledLinks))
-		if numUncrawled < len(uncrawledLinks) {
-			// This makes it so that the first numUnCrawled elements read from
-			// the data store are entered (in reverse order) onto segments
-			uncrawledLinks = uncrawledLinks[:numUncrawled]
-		}
-		numCrawled := imax(0, numRemain-numUncrawled)
-		for i := 0; i < numRemain; i++ {
+		refreshDecimal := Config.Dispatcher.RefreshPercentage / 100.0
+		numCrawledF := round(refreshDecimal * float64(numRemain))
+		numCrawled := imin(int(numCrawledF), crawledLinks.Len())
+		numUncrawled := numRemain - numCrawled
+		for numCrawled+numUncrawled > 0 {
 
 			if numUncrawled > 0 {
-				u := uncrawledLinks[len(uncrawledLinks)-1]
-				uncrawledLinks = uncrawledLinks[:len(uncrawledLinks)-1]
+				u := uncrawledLinks[numUncrawled-1]
 				links = append(links, u)
 				numUncrawled--
 			}
@@ -264,14 +276,13 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 				links = append(links, u)
 				numCrawled--
 			}
-
-			if numCrawled+numUncrawled <= 0 {
-				break
-			}
 		}
 
 	}
 
+	//
+	// Got any links
+	//
 	if len(links) == 0 {
 		log4go.Info("No links to dispatch for %v", domain)
 		return nil
@@ -340,6 +351,11 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	return nil
 }
 
+//
+// PriorityUrl is a heap of URLs, where the next element Pop'ed off
+// the list points to the oldest (as measured by LastCrawled) element
+// in the list
+//
 type PriorityUrl []*URL
 
 func (pq PriorityUrl) Len() int {
@@ -364,14 +380,4 @@ func (pq *PriorityUrl) Pop() interface{} {
 	x := old[n-1]
 	*pq = old[0 : n-1]
 	return x
-}
-
-func PriorityUrlFooBar() {
-	var prio PriorityUrl
-	heap.Init(&prio)
-	heap.Push(&prio, &URL{})
-	heap.Push(&prio, &URL{})
-	for prio.Len() > 0 {
-		fmt.Printf(">> %v", heap.Pop(&prio))
-	}
 }

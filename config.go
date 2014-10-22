@@ -49,7 +49,7 @@ type WalkerConfig struct {
 
 	Dispatcher struct {
 		MaxLinksPerSegment   int     `yaml:"num_links_per_segment"`
-		RefreshRatio         float32 `yaml:"refresh_ratio"`
+		RefreshPercentage    float64 `yaml:"refresh_percentage"`
 		NumConcurrentDomains int     `yaml:"num_concurrent_domains"`
 	} `yaml:"dispatcher"`
 
@@ -112,7 +112,7 @@ func SetDefaultConfig() {
 	Config.BlacklistPrivateIPs = true
 
 	Config.Dispatcher.MaxLinksPerSegment = 500
-	Config.Dispatcher.RefreshRatio = 0.8
+	Config.Dispatcher.RefreshPercentage = 25
 	Config.Dispatcher.NumConcurrentDomains = 1
 
 	Config.Cassandra.Hosts = []string{"localhost"}
@@ -131,6 +131,33 @@ func ReadConfigFile(path string) error {
 	return readConfig()
 }
 
+func assertConfigInvarients() error {
+	var errs []string
+	dis := &Config.Dispatcher
+	if dis.RefreshPercentage < 0.0 || dis.RefreshPercentage > 100.0 {
+		errs = append(errs, "Dispatcher.RefreshPercentage must be a floating point number b/w 0 and 100")
+	}
+	if dis.MaxLinksPerSegment < 1 {
+		errs = append(errs, "Dispatcher.MaxLinksPerSegment must be greater than 0")
+	}
+	if dis.NumConcurrentDomains < 1 {
+		errs = append(errs, "Dispatcher.NumConcurrentDomains must be greater than 0")
+	}
+
+	if len(errs) > 0 {
+		em := ""
+		for _, err := range errs {
+			log4go.Error("Config Error: %v", err)
+			em += "\t"
+			em += err
+			em += "\n"
+		}
+		return fmt.Errorf("Config Error:\n%v\n", em)
+	}
+
+	return nil
+}
+
 func readConfig() error {
 	SetDefaultConfig()
 
@@ -143,5 +170,7 @@ func readConfig() error {
 		return fmt.Errorf("Failed to unmarshal yaml from config file (%v): %v", ConfigName, err)
 	}
 	log4go.Info("Loaded config file %v", ConfigName)
-	return nil
+
+	err = assertConfigInvarients()
+	return err
 }
