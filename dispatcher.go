@@ -178,9 +178,9 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	// Cell captures all the information for a link in one place
 	//
 	type Cell struct {
-		dom, subdom, path, proto string
-		crawl_time               time.Time
-		getnow                   bool
+		subdom, path, proto string
+		crawl_time          time.Time
+		getnow              bool
 	}
 
 	// Checks equality of two cells. Don't need to check dom, since in the
@@ -199,7 +199,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	// limit links, they stopped storing links.
 	var limit = Config.Dispatcher.MaxLinksPerSegment
 	cell_push := func(c *Cell) {
-		u, err := CreateURL(c.dom, c.subdom, c.path, c.proto, c.crawl_time)
+		u, err := CreateURL(domain, c.subdom, c.path, c.proto, c.crawl_time)
 		if err != nil {
 			log4go.Error("CreateURL: " + err.Error())
 			return
@@ -222,9 +222,9 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	var finish = true
 	var current Cell
 	var previous Cell
-	iter := d.db.Query(`SELECT dom, subdom, path, proto, time, getnow
+	iter := d.db.Query(`SELECT subdom, path, proto, time, getnow
 						FROM links WHERE dom = ?`, domain).Iter()
-	for iter.Scan(&current.dom, &current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
+	for iter.Scan(&current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
 		if start {
 			previous = current
 			start = false
