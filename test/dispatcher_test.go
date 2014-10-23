@@ -419,6 +419,34 @@ func TestDispatcherBasic(t *testing.T) {
 				t.Errorf("For tag %q `dispatched` flag not set on domain: %v", dt.Tag, edi.Dom)
 			}
 		}
+
+		// Make sure that getnow was unset
+		for _, el := range dt.ExistingLinks {
+			if !el.GetNow {
+				continue
+			}
+
+			dom, subdom, err := el.URL.TLDPlusOneAndSubdomain()
+			if err != nil {
+				t.Fatalf("For tag %q failed to get dom/subdom for link %v", dt.Tag, el.URL.String())
+			}
+
+			var getnow bool
+			err = db.Query(`SELECT getnow
+		                    FROM links
+		                    WHERE dom = ? AND
+		                          subdom = ? AND
+		                          path = ? AND
+		                          proto = ? AND
+		                          time = ?`, dom, subdom, el.URL.RequestURI(), el.URL.Scheme, el.URL.LastCrawled).Scan(&getnow)
+			if err != nil {
+				t.Fatalf("For tag %q failed to query for url %v: %v", dt.Tag, el.URL.String(), err)
+			}
+
+			if getnow {
+				t.Errorf("For tag %q, for link %v, failed to clear getnow", dt.Tag, el.URL.String())
+			}
+		}
 	}
 }
 
