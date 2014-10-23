@@ -311,22 +311,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	}
 
 	//
-	// Go back and clean out the getnow flag.
-	//
-	for _, u := range getNowLinks {
-		dom, subdom, err := u.TLDPlusOneAndSubdomain()
-		if err != nil {
-			log4go.Error("generateSegment not updateing %v: %v", u, err)
-			continue
-		}
-		err = d.db.Query(`UPDATE links SET getnow = false WHERE dom = ? AND subdom = ? AND path = ? AND proto = ? AND time = ?`,
-			dom, subdom, u.RequestURI(), u.Scheme, u.LastCrawled).Exec()
-		if err != nil {
-			log4go.Error("generateSegment failed update to %v: %v", u, err)
-		}
-	}
-
-	//
 	// Update dispatched flag
 	//
 	err := d.db.Query(`UPDATE domain_info SET dispatched = true WHERE dom = ?`, domain).Exec()
