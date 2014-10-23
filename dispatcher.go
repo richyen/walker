@@ -260,41 +260,27 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 
 	numRemain := limit - len(links)
 	if numRemain > 0 {
-		lenCrawled := crawledLinks.Len()
-		lenUncrawled := len(uncrawledLinks)
 		refreshDecimal := Config.Dispatcher.RefreshPercentage / 100.0
 		idealCrawled := round(refreshDecimal * float64(numRemain))
 		idealUncrawled := numRemain - idealCrawled
 
-		var numCrawled, numUncrawled int
-		if lenCrawled <= idealCrawled && lenUncrawled <= idealUncrawled {
-			numCrawled = lenCrawled
-			numUncrawled = lenUncrawled
-		} else if lenCrawled > idealCrawled && lenUncrawled > idealUncrawled {
-			numCrawled = idealCrawled
-			numUncrawled = idealUncrawled
-		} else if lenCrawled <= idealCrawled && lenUncrawled > idealUncrawled {
-			numCrawled = lenCrawled
-			numUncrawled = imin(numRemain-lenCrawled, lenUncrawled)
-		} else { //lenCrawled > idealCrawled && lenUncrawled <= idealUncrawled {
-			numCrawled = imin(numRemain-lenUncrawled, lenCrawled)
-			numUncrawled = lenUncrawled
+		for i := 0; i < idealUncrawled && len(uncrawledLinks) > 0 && len(links) < limit; i++ {
+			links = append(links, uncrawledLinks[0])
+			uncrawledLinks = uncrawledLinks[1:]
 		}
 
-		for numCrawled+numUncrawled > 0 {
-			if numUncrawled > 0 {
-				u := uncrawledLinks[numUncrawled-1]
-				links = append(links, u)
-				numUncrawled--
-			}
-
-			if numCrawled > 0 {
-				u := heap.Pop(&crawledLinks).(*URL)
-				links = append(links, u)
-				numCrawled--
-			}
+		for i := 0; i < idealCrawled && crawledLinks.Len() > 0 && len(links) < limit; i++ {
+			links = append(links, heap.Pop(&crawledLinks).(*URL))
 		}
 
+		for len(uncrawledLinks) > 0 && len(links) < limit {
+			links = append(links, uncrawledLinks[0])
+			uncrawledLinks = uncrawledLinks[1:]
+		}
+
+		for crawledLinks.Len() > 0 && len(links) < limit {
+			links = append(links, heap.Pop(&crawledLinks).(*URL))
+		}
 	}
 
 	//
@@ -349,23 +335,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	}
 	log4go.Info("Generated segment for %v (%v links)", domain, len(links))
 
-	// XXX: Dan can we remove this comment?
-	// Batch insert -- may be faster but hard to figured out what happened on
-	// errors
-	//
-	//batch := d.db.NewBatch(gocql.UnloggedBatch)
-	//batch.Query(`INSERT INTO domains_to_crawl (domain, priority, crawler_token)
-	//				VALUES (?, ?, 00000000-0000-0000-0000-000000000000)`, domain, 0)
-	//for u, _ := range links {
-	//	log4go.Debug("Adding link to segment batch insert: %v", u)
-	//	batch.Query(`INSERT INTO segments (domain, subdom, path, proto, time)
-	//						VALUES (?, ?, ?, ?, ?)`,
-	//		u.Host, "", u.Path, u.Scheme, NotYetCrawled)
-	//}
-	//log4go.Info("Inserting %v links in segment for %v", batch.Size()-1, domain)
-	//if err := d.db.ExecuteBatch(batch); err != nil {
-	//	return fmt.Errorf("error inserting links for segment %v: %v", domain, err)
-	//}
 	return nil
 }
 
