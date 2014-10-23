@@ -138,6 +138,28 @@ func (d *CassandraDispatcher) generateRoutine() {
 	log4go.Debug("Finishing generateRoutine")
 }
 
+//
+// Some mathy type functions used in generateSegment
+//
+func imin(l int, r int) int {
+	if l < r {
+		return l
+	} else {
+		return r
+	}
+}
+
+func round(f float64) int {
+	abs := math.Abs(f)
+	sign := f / abs
+	floor := math.Floor(abs)
+	if abs-floor >= 0.5 {
+		return int(sign * (floor + 1))
+	} else {
+		return int(sign * floor)
+	}
+}
+
 // generateSegment reads links in for this domain, generates a segment for it,
 // and inserts the domain into domains_to_crawl (assuming a segment is ready to
 // go)
@@ -161,11 +183,12 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		getnow                   bool
 	}
 
-	// checks equality of two cells
+	// Checks equality of two cells. Don't need to check dom, since in the
+	// context it is always the same. Don't check crawl_time, since we want a
+	// comparison independent of crawl_time.
 	cell_equal := func(l *Cell, r *Cell) bool {
-		return l.dom == r.dom &&
+		return l.path == r.path &&
 			l.subdom == r.subdom &&
-			l.path == r.path &&
 			l.proto == r.proto
 	}
 
@@ -190,29 +213,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			heap.Push(&crawledLinks, u)
 		}
 		return
-	}
-
-	//
-	// Some mathy type functions
-	//
-	imin := func(l int, r int) int {
-		if l < r {
-			return l
-		} else {
-			return r
-		}
-	}
-
-	round := func(f float64) int {
-		abs := math.Abs(f)
-		sign := f / abs
-		floor := math.Floor(abs)
-		if abs-floor >= 0.5 {
-			return int(sign * (floor + 1))
-		} else {
-			return int(sign * floor)
-		}
-
 	}
 
 	//
