@@ -147,7 +147,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	//
 	// Three lists to hold the 3 link types
 	//
-	var getNowLinks []*URL       //links marked getnow
+	var getNowLinks []*URL       // links marked getnow
 	var uncrawledLinks []*URL    // links that haven't been crawled
 	var crawledLinks PriorityUrl // already crawled links, oldest links out first
 	heap.Init(&crawledLinks)
