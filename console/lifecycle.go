@@ -203,6 +203,7 @@ func Start() {
 				log4go.Info("Console caught SIGINT")
 			case <-shutdownChannel:
 			}
+			signal.Stop(stop)
 			stopper.stop()
 		}()
 

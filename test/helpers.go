@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"code.google.com/p/log4go"
@@ -156,7 +158,7 @@ func setupCtrlCHandler() {
 }
 
 func disableCtrlCHandler() {
-	c := make(chan bool)
+	c := make(chan string)
 	disableCtrlCHandlerChan <- c
 	c <- "disable"
 	<-c
@@ -164,7 +166,7 @@ func disableCtrlCHandler() {
 }
 
 func enableCtrlCHandler() {
-	c := make(chan bool)
+	c := make(chan string)
 	disableCtrlCHandlerChan <- c
 	c <- "enable"
 	<-c
