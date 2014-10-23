@@ -223,8 +223,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	var current Cell
 	var previous Cell
 	iter := d.db.Query(`SELECT dom, subdom, path, proto, time, getnow
-						FROM links WHERE dom = ?
-						ORDER BY subdom, path, proto, time`, domain).Iter()
+						FROM links WHERE dom = ?`, domain).Iter()
 	for iter.Scan(&current.dom, &current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
 		if start {
 			previous = current
