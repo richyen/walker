@@ -52,11 +52,13 @@ func TestCommandsReadConfig(t *testing.T) {
 			os.Args = []string{os.Args[0], walkerCom, "--config=test-walker2.yaml"}
 		}
 
+		disableCtrlCHandler()
 		go func() {
 			time.Sleep(5 * time.Millisecond)
 			syscall.Kill(os.Getpid(), syscall.SIGINT)
 		}()
 		cmd.Execute()
+		enableCtrlCHandler()
 
 		expectedTestAgent := "Test Agent (set in yaml)"
 		if walker.Config.UserAgent != expectedTestAgent {
@@ -90,11 +92,13 @@ func TestCrawlCommand(t *testing.T) {
 
 		os.Args = args[index]
 
+		disableCtrlCHandler()
 		go func() {
 			time.Sleep(5 * time.Millisecond)
 			syscall.Kill(os.Getpid(), syscall.SIGINT)
 		}()
 		cmd.Execute()
+		enableCtrlCHandler()
 
 		handler.AssertExpectations(t)
 		datastore.AssertExpectations(t)
@@ -118,11 +122,13 @@ func TestFetchCommand(t *testing.T) {
 	defer func() { os.Args = orig }()
 	os.Args = []string{os.Args[0], "fetch"}
 
+	disableCtrlCHandler()
 	go func() {
 		time.Sleep(5 * time.Millisecond)
 		syscall.Kill(os.Getpid(), syscall.SIGINT)
 	}()
 	cmd.Execute()
+	enableCtrlCHandler()
 
 	handler.AssertExpectations(t)
 	datastore.AssertExpectations(t)
@@ -146,11 +152,13 @@ func TestDispatchCommand(t *testing.T) {
 	defer func() { os.Args = orig }()
 	os.Args = []string{os.Args[0], "dispatch"}
 
+	disableCtrlCHandler()
 	go func() {
 		time.Sleep(5 * time.Millisecond)
 		syscall.Kill(os.Getpid(), syscall.SIGINT)
 	}()
 	cmd.Execute()
+	enableCtrlCHandler()
 
 	handler.AssertExpectations(t)
 	datastore.AssertExpectations(t)
@@ -167,11 +175,13 @@ func TestSeedCommand(t *testing.T) {
 	defer func() { os.Args = orig }()
 	os.Args = []string{os.Args[0], "seed", "--url=" + u.String()}
 
+	disableCtrlCHandler()
 	go func() {
 		time.Sleep(5 * time.Millisecond)
 		syscall.Kill(os.Getpid(), syscall.SIGINT)
 	}()
 	cmd.Execute()
+	enableCtrlCHandler()
 
 	datastore.AssertExpectations(t)
 }

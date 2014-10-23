@@ -5,11 +5,18 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
 
+	"code.google.com/p/log4go"
 	"github.com/iParadigms/walker"
 )
+
+func init() {
+	setupCtrlCHandler()
+}
 
 // FakeDial makes connections to localhost, no matter what addr was given.
 func FakeDial(network, addr string) (net.Conn, error) {
@@ -105,4 +112,61 @@ func (mrt *mapRoundTrip) RoundTrip(req *http.Request) (*http.Response, error) {
 		return response404(), nil
 	}
 	return res, nil
+}
+
+//
+// If you want your test to support exiting on Ctrl-C, call setupCtrlCHandler
+// in your fixture. Use enableCtrlCHandler and disableCtrlCHandler to turn the
+// exit handler on and off.
+//
+var initCtrlCHandler sync.Once
+var disableCtrlCHandlerChan = make(chan chan string)
+
+func setupCtrlCHandler() {
+	initCtrlCHandler.Do(func() {
+		stop := make(chan os.Signal)
+		signal.Notify(stop, syscall.SIGINT)
+
+		go func() {
+			disabled := false
+			for {
+				select {
+				case <-stop:
+					if !disabled {
+						log4go.Info("setupCtrlCHandler was asked to exit this process")
+						os.Exit(1)
+					}
+				case c := <-disableCtrlCHandlerChan:
+					m := <-c
+					switch m {
+					case "enable":
+						disabled = false
+						c <- "ok"
+					case "disable":
+						disabled = true
+						c <- "ok"
+					default:
+						log4go.Error("Ctrl-C handler got an unknown message %q", m)
+						c <- "ok"
+					}
+				}
+			}
+		}()
+	})
+}
+
+func disableCtrlCHandler() {
+	c := make(chan bool)
+	disableCtrlCHandlerChan <- c
+	c <- "disable"
+	<-c
+	close(c)
+}
+
+func enableCtrlCHandler() {
+	c := make(chan bool)
+	disableCtrlCHandlerChan <- c
+	c <- "enable"
+	<-c
+	close(c)
 }
