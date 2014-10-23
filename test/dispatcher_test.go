@@ -127,6 +127,11 @@ var DispatcherTests = []DispatcherTest{
 		},
 
 		ExistingLinks: []ExistingLink{
+			{URL: walker.URL{URL: urlParse("http://test.com/l.html"),
+				LastCrawled: time.Now().AddDate(0, -2, -4)}, Status: http.StatusOK},
+			{URL: walker.URL{URL: urlParse("http://test.com/m.html"),
+				LastCrawled: time.Now().AddDate(0, -3, -1)}, Status: http.StatusOK},
+
 			{URL: walker.URL{URL: urlParse("http://test.com/a.html"),
 				LastCrawled: time.Now().AddDate(0, 0, -1)}, Status: http.StatusOK},
 			{URL: walker.URL{URL: urlParse("http://test.com/b.html"),
@@ -153,11 +158,6 @@ var DispatcherTests = []DispatcherTest{
 			{URL: walker.URL{URL: urlParse("http://test.com/k.html"),
 				LastCrawled: time.Now().AddDate(0, -2, -3)}, Status: http.StatusOK},
 
-			{URL: walker.URL{URL: urlParse("http://test.com/l.html"),
-				LastCrawled: time.Now().AddDate(0, -2, -4)}, Status: http.StatusOK},
-			{URL: walker.URL{URL: urlParse("http://test.com/m.html"),
-				LastCrawled: time.Now().AddDate(0, -3, -1)}, Status: http.StatusOK},
-
 			// These two links cover up the previous two l and m.html links.
 			{URL: walker.URL{URL: urlParse("http://test.com/l.html"),
 				LastCrawled: time.Now()}, Status: http.StatusOK},
@@ -166,7 +166,7 @@ var DispatcherTests = []DispatcherTest{
 		},
 
 		ExpectedSegmentLinks: []walker.URL{
-
+			// 9 Oldest links
 			{URL: urlParse("http://test.com/k.html"),
 				LastCrawled: time.Now().AddDate(0, -2, -3)},
 			{URL: urlParse("http://test.com/j.html"),
@@ -261,40 +261,89 @@ var DispatcherTests = []DispatcherTest{
 		},
 	},
 
-	DispatcherTest{ // Verifies that we work with query parameters properly
-		"QueryParmsOK",
-		[]ExistingDomainInfo{
+	DispatcherTest{
+		Tag: "OnlyUncrawled",
+
+		ExistingDomainInfos: []ExistingDomainInfo{
 			{"test.com", gocql.UUID{}, 0, false},
 		},
-		[]ExistingLink{
+
+		ExistingLinks: []ExistingLink{
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled1.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled2.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled3.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled4.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled5.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled6.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled7.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled8.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+			{URL: walker.URL{URL: urlParse("http://test.com/notcrawled9.html"),
+				LastCrawled: walker.NotYetCrawled}, Status: -1},
+		},
+
+		ExpectedSegmentLinks: []walker.URL{
+			{URL: urlParse("http://test.com/notcrawled1.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled2.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled3.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled4.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled5.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled6.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled7.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled8.html"),
+				LastCrawled: walker.NotYetCrawled},
+			{URL: urlParse("http://test.com/notcrawled9.html"),
+				LastCrawled: walker.NotYetCrawled},
+		},
+	},
+
+	DispatcherTest{ // Verifies that we work with query parameters properly
+		Tag: "QueryParmsOK",
+		ExistingDomainInfos: []ExistingDomainInfo{
+			{"test.com", gocql.UUID{}, 0, false},
+		},
+		ExistingLinks: []ExistingLink{
 			{URL: walker.URL{URL: urlParse("http://test.com/page1.html?p=v"),
 				LastCrawled: walker.NotYetCrawled}, Status: -1},
 		},
-		[]walker.URL{
+		ExpectedSegmentLinks: []walker.URL{
 			{URL: urlParse("http://test.com/page1.html?p=v"),
 				LastCrawled: walker.NotYetCrawled},
 		},
 	},
 
 	DispatcherTest{ // Verifies that we don't generate an already-dispatched domain
-		"NoAlreadyDispatched",
-		[]ExistingDomainInfo{
+		Tag: "NoAlreadyDispatched",
+		ExistingDomainInfos: []ExistingDomainInfo{
 			{"test.com", gocql.UUID{}, 0, true},
 		},
-		[]ExistingLink{
+		ExistingLinks: []ExistingLink{
 			{URL: walker.URL{URL: urlParse("http://test.com/page1.html"),
 				LastCrawled: walker.NotYetCrawled}, Status: -1},
 		},
-		[]walker.URL{},
+		ExpectedSegmentLinks: []walker.URL{},
 	},
 }
 
 func TestDispatcherBasic(t *testing.T) {
-	//DEBUG REMOVE REMOVE REMOVE
-	walker.Config.Cassandra.Keyspace = "walker_test"
-	walker.Config.Cassandra.Hosts = []string{"localhost"}
-	walker.Config.Cassandra.ReplicationFactor = 1
-	//DEBUG REMOVE REMOVE REMOVE
+	// These config settings MUST be here. The results of the test
+	// change if these are changed.
+	walker.Config.Dispatcher.MaxLinksPerSegment = 9
+	walker.Config.Dispatcher.RefreshPercentage = 33
 
 	var q *gocql.Query
 
@@ -337,9 +386,6 @@ func TestDispatcherBasic(t *testing.T) {
 			}
 		}
 
-		walker.Config.Dispatcher.MaxLinksPerSegment = 9
-		walker.Config.Dispatcher.RefreshPercentage = 33
-
 		d := &walker.CassandraDispatcher{}
 		go d.StartDispatcher()
 		time.Sleep(time.Second)
@@ -374,8 +420,6 @@ func TestDispatcherBasic(t *testing.T) {
 			}
 		}
 	}
-
-	t.Fatalf("YES")
 }
 
 func TestDispatcherDispatchedFalseIfNoLinks(t *testing.T) {
@@ -388,7 +432,9 @@ func TestDispatcherDispatchedFalseIfNoLinks(t *testing.T) {
 
 	d := &walker.CassandraDispatcher{}
 	go d.StartDispatcher()
-	time.Sleep(time.Millisecond * 10)
+	// Pete says this time used to be 10 millis, but I was observing spurious nil channel
+	// panics. Increased it to 100 to see if that would help.
+	time.Sleep(time.Millisecond * 100)
 	d.StopDispatcher()
 
 	q = db.Query(`SELECT dispatched FROM domain_info WHERE dom = ?`, "test.com")

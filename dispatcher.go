@@ -171,6 +171,9 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 
 	// cell push will push the argument cell onto one of the three link-lists.
 	// logs failure if CreateURL fails.
+	// NOTE: one way to reduce memory footprint, which would be easy, is to
+	// limit uncrawledLinks and crawledLinks so that if they already had
+	// limit links, they stopped storing links.
 	var limit = Config.Dispatcher.MaxLinksPerSegment
 	cell_push := func(c *Cell) {
 		u, err := CreateURL(c.dom, c.subdom, c.path, c.proto, c.crawl_time)
@@ -178,8 +181,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			log4go.Error("CreateURL: " + err.Error())
 			return
 		}
-
-		log4go.Error("PETE: pushing url %v with getnow = %v and NotYetCrawled = %v: %v", u.String(), c.getnow, c.crawl_time.Equal(NotYetCrawled), c.crawl_time)
 
 		if c.getnow {
 			getNowLinks = append(getNowLinks, u)
@@ -194,6 +195,14 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	//
 	// Some mathy type functions
 	//
+	imin := func(l int, r int) int {
+		if l < r {
+			return l
+		} else {
+			return r
+		}
+	}
+
 	round := func(f float64) int {
 		abs := math.Abs(f)
 		sign := f / abs
@@ -244,19 +253,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
 	}
 
-	//DEBUG
-	var save []*URL
-	theLen := crawledLinks.Len()
-	for i := 0; i < theLen; i++ {
-		u := heap.Pop(&crawledLinks).(*URL)
-		log4go.Error("PETE CRAWLEDLINK: %v -> %v", u.String(), u.LastCrawled)
-		save = append(save, u)
-	}
-	for _, u := range save {
-		heap.Push(&crawledLinks, u)
-	}
-	//DEBUG
-
 	//
 	// Merge the 3 link types
 	//
@@ -280,9 +276,9 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			numUncrawled = idealUncrawled
 		} else if lenCrawled <= idealCrawled && lenUncrawled > idealUncrawled {
 			numCrawled = lenCrawled
-			numUncrawled = numRemain - lenCrawled
+			numUncrawled = imin(numRemain-lenCrawled, lenUncrawled)
 		} else { //lenCrawled > idealCrawled && lenUncrawled <= idealUncrawled {
-			numCrawled = numRemain - lenUncrawled
+			numCrawled = imin(numRemain-lenUncrawled, lenCrawled)
 			numUncrawled = lenUncrawled
 		}
 
@@ -300,18 +296,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			}
 		}
 
-	}
-
-	for _, link := range getNowLinks {
-		log4go.Error("PETE getnow: %q", link.String())
-	}
-
-	for _, link := range uncrawledLinks {
-		log4go.Error("PETE uncrawl: %q", link.String())
-	}
-
-	for _, link := range links {
-		log4go.Error("PETE LINK: %q", link.String())
 	}
 
 	//
@@ -366,6 +350,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	}
 	log4go.Info("Generated segment for %v (%v links)", domain, len(links))
 
+	// XXX: Dan can we remove this comment?
 	// Batch insert -- may be faster but hard to figured out what happened on
 	// errors
 	//
@@ -388,7 +373,8 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 //
 // PriorityUrl is a heap of URLs, where the next element Pop'ed off
 // the list points to the oldest (as measured by LastCrawled) element
-// in the list
+// in the list. This class is designed to be used with the container/heap
+//
 //
 type PriorityUrl []*URL
 
