@@ -342,6 +342,12 @@ var DispatcherTests = []DispatcherTest{
 func TestDispatcherBasic(t *testing.T) {
 	// These config settings MUST be here. The results of the test
 	// change if these are changed.
+	origMaxLinksPerSegment := walker.Config.Dispatcher.MaxLinksPerSegment
+	origRefreshPercentage := walker.Config.Dispatcher.RefreshPercentage
+	defer func() {
+		walker.Config.Dispatcher.MaxLinksPerSegment = origMaxLinksPerSegment
+		walker.Config.Dispatcher.RefreshPercentage = origRefreshPercentage
+	}()
 	walker.Config.Dispatcher.MaxLinksPerSegment = 9
 	walker.Config.Dispatcher.RefreshPercentage = 33
 
