@@ -60,6 +60,9 @@ type FetchResults struct {
 	// True if we did not request this link because it is excluded by
 	// robots.txt rules
 	ExcludedByRobots bool
+
+	// The Content-Type of the fetched page.
+	MimeType string
 }
 
 // URL is the walker URL object, which embeds *url.URL but has extra data and
@@ -333,6 +336,11 @@ func (f *fetcher) start() {
 				continue
 			}
 			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
+
+			ctype, ctypeOk := fr.Response.Header["Content-Type"]
+			if ctypeOk && len(ctype) > 0 {
+				fr.MimeType = ctype[0]
+			}
 
 			canSearch := isHTML(fr.Response)
 			if canSearch {
