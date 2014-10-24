@@ -228,6 +228,7 @@ type LinksExpectation struct {
 	FetchError       string
 	ExcludedByRobots bool
 	Status           int
+	MimeType         string
 }
 
 var StoreURLExpectations []StoreURLExpectation
@@ -244,6 +245,7 @@ func init() {
 						Host: "test.com",
 					},
 				},
+				MimeType: "text/html; charset=ISO-8859-4",
 			},
 			Expected: &LinksExpectation{
 				Domain:    "test.com",
@@ -251,6 +253,7 @@ func init() {
 				Protocol:  "http",
 				CrawlTime: time.Unix(0, 0),
 				Status:    200,
+				MimeType:  "text/html; charset=ISO-8859-4",
 			},
 		},
 		StoreURLExpectation{
@@ -260,6 +263,7 @@ func init() {
 				Response: &http.Response{
 					StatusCode: 200,
 				},
+				MimeType: "foo/bar",
 			},
 			Expected: &LinksExpectation{
 				Domain:    "test.com",
@@ -267,6 +271,7 @@ func init() {
 				Protocol:  "http",
 				CrawlTime: time.Unix(0, 0),
 				Status:    200,
+				MimeType:  "foo/bar",
 			},
 		},
 		StoreURLExpectation{
@@ -344,14 +349,14 @@ func TestStoreURLFetchResults(t *testing.T) {
 
 		actual := &LinksExpectation{}
 		err := db.Query(
-			`SELECT err, robot_ex, stat FROM links
+			`SELECT err, robot_ex, stat, mime FROM links
 			WHERE dom = ? AND subdom = ? AND path = ? AND proto = ?`, // AND time = ?`,
 			exp.Domain,
 			exp.Subdomain,
 			exp.Path,
 			exp.Protocol,
 			//exp.CrawlTime,
-		).Scan(&actual.FetchError, &actual.ExcludedByRobots, &actual.Status)
+		).Scan(&actual.FetchError, &actual.ExcludedByRobots, &actual.Status, &actual.MimeType)
 		if err != nil {
 			t.Errorf("Did not find row in links: %+v\nInput: %+v\nError: %v", exp, tcase.Input, err)
 		}
@@ -366,6 +371,10 @@ func TestStoreURLFetchResults(t *testing.T) {
 		if exp.Status != actual.Status {
 			t.Errorf("Expected stat: %v\nBut got: %v\nFor input: %+v",
 				exp.Status, actual.Status, tcase.Input)
+		}
+		if exp.MimeType != actual.MimeType {
+			t.Errorf("Expected mime: %v\nBut got: %v\nFor input: %+v",
+				exp.MimeType, actual.MimeType, tcase.Input)
 		}
 	}
 }

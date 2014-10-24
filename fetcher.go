@@ -11,6 +11,7 @@ import (
 
 	"github.com/temoto/robotstxt.go"
 
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -60,6 +61,9 @@ type FetchResults struct {
 	// True if we did not request this link because it is excluded by
 	// robots.txt rules
 	ExcludedByRobots bool
+
+	// The Content-Type of the fetched page.
+	MimeType string
 }
 
 // URL is the walker URL object, which embeds *url.URL but has extra data and
@@ -333,6 +337,16 @@ func (f *fetcher) start() {
 				continue
 			}
 			log4go.Debug("Fetched %v -- %v", link, fr.Response.Status)
+
+			ctype, ctypeOk := fr.Response.Header["Content-Type"]
+			if ctypeOk && len(ctype) > 0 {
+				media_type, _, err := mime.ParseMediaType(ctype[0])
+				if err != nil {
+					log4go.Error("Failed to parse mime header %q: %v", ctype[0], err)
+				} else {
+					fr.MimeType = media_type
+				}
+			}
 
 			canSearch := isHTML(fr.Response)
 			if canSearch {

@@ -116,7 +116,7 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	walker.Config.AcceptFormats = []string{"text/html", "text/plain"}
 	rs.SetResponse("http://accept.com/robots.txt", &MockResponse{Status: 404})
 	rs.SetResponse("http://accept.com/accept_html.html", &MockResponse{
-		ContentType: "text/html",
+		ContentType: "text/html; charset=ISO-8859-4",
 		Body:        html_body_nolinks,
 	})
 	rs.SetResponse("http://accept.com/accept_text.txt", &MockResponse{
@@ -171,8 +171,15 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	}
 
 	// Link tests to ensure we resolve URLs to proper absolute forms
+	expectedMimesFound := map[string]string{
+		"http://accept.com/donthandle":       "foo/bar",
+		"http://accept.com/accept_text.txt":  "text/plain",
+		"http://accept.com/accept_html.html": "text/html",
+	}
+
 	for _, call := range ds.Calls {
-		if call.Method == "StoreParsedURL" {
+		switch call.Method {
+		case "StoreParsedURL":
 			u := call.Arguments.Get(0).(*walker.URL)
 			fr := call.Arguments.Get(1).(*walker.FetchResults)
 			if fr.URL.String() != "http://linktests.com/links/test.html" {
@@ -189,7 +196,22 @@ func TestBasicFetchManagerRun(t *testing.T) {
 			default:
 				t.Errorf("StoreParsedURL call we didn't expect: %v", u)
 			}
+
+		case "StoreURLFetchResults":
+			fr := call.Arguments.Get(0).(*walker.FetchResults)
+			link := fr.URL.String()
+			mime, mimeOk := expectedMimesFound[link]
+			if mimeOk {
+				delete(expectedMimesFound, link)
+				if fr.MimeType != mime {
+					t.Errorf("StoreURLFetchResults for link %v, got mime type %q, expected %q",
+						link, fr.MimeType, mime)
+				}
+			}
 		}
+	}
+	for link := range expectedMimesFound {
+		t.Errorf("StoreURLFetchResults expected to find mime type for link %v, but didn't", link)
 	}
 
 	ds.AssertExpectations(t)

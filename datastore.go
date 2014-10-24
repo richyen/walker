@@ -227,6 +227,10 @@ func (ds *CassandraDatastore) StoreURLFetchResults(fr *FetchResults) {
 		inserts = append(inserts, dbfield{"stat", fr.Response.StatusCode})
 	}
 
+	if fr.MimeType != "" {
+		inserts = append(inserts, dbfield{"mime", fr.MimeType})
+	}
+
 	// Put the values together and run the query
 	names := []string{}
 	values := []interface{}{}
@@ -431,6 +435,9 @@ CREATE TABLE {{.Keyspace}}.links (
 	-- getnow is true if this link should be queued ASAP to be crawled
 	getnow boolean,
 
+	-- mime type, also known as Content-Type (ex. "text/html")
+	mime text,
+
 	---- Items yet to be added to walker
 
 	-- fingerprint, a hash of the page contents for identity comparison
@@ -446,8 +453,7 @@ CREATE TABLE {{.Keyspace}}.links (
 	-- referer, maybe can be kept for parsed links
 	--ref text,
 
-	-- mime type, also known as Content-Type (ex. "text/html")
-	--mime text,
+
 
 	-- encoding of the text, ex. "utf8"
 	--encoding text,
