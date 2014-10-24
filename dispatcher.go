@@ -160,6 +160,56 @@ func round(f float64) int {
 	}
 }
 
+//
+// Cell captures all the information for a link in the generateSegments method.
+// Every cell generated in that method shares the same domain (hence we don't
+// store the domain in the struct).
+//
+type cell struct {
+	subdom, path, proto string
+	crawl_time          time.Time
+	getnow              bool
+}
+
+// 2 cells are equivalent if their full link renders to the same string.
+func (c *cell) equivalent(other *cell) bool {
+	return c.path == other.path &&
+		c.subdom == other.subdom &&
+		c.proto == other.proto
+}
+
+//
+// PriorityUrl is a heap of URLs, where the next element Pop'ed off the list
+// points to the oldest (as measured by LastCrawled) element in the list. This
+// class is designed to be used with the container/heap package. This type is
+// currently only used in generateSegments
+//
+type PriorityUrl []*URL
+
+func (pq PriorityUrl) Len() int {
+	return len(pq)
+}
+
+func (pq PriorityUrl) Less(i, j int) bool {
+	return pq[i].LastCrawled.Before(pq[j].LastCrawled)
+}
+
+func (pq PriorityUrl) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+}
+
+func (pq *PriorityUrl) Push(x interface{}) {
+	*pq = append(*pq, x.(*URL))
+}
+
+func (pq *PriorityUrl) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	x := old[n-1]
+	*pq = old[0 : n-1]
+	return x
+}
+
 // generateSegment reads links in for this domain, generates a segment for it,
 // and inserts the domain into domains_to_crawl (assuming a segment is ready to
 // go)
@@ -174,28 +224,10 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	var crawledLinks PriorityUrl // already crawled links, oldest links out first
 	heap.Init(&crawledLinks)
 
-	//
-	// Cell captures all the information for a link in one place
-	//
-	type Cell struct {
-		subdom, path, proto string
-		crawl_time          time.Time
-		getnow              bool
-	}
-
-	// Checks equality of two cells. Don't need to check dom, since in the
-	// context it is always the same. Don't check crawl_time, since we want a
-	// comparison independent of crawl_time.
-	cell_equal := func(l *Cell, r *Cell) bool {
-		return l.path == r.path &&
-			l.subdom == r.subdom &&
-			l.proto == r.proto
-	}
-
 	// cell push will push the argument cell onto one of the three link-lists.
 	// logs failure if CreateURL fails.
 	var limit = Config.Dispatcher.MaxLinksPerSegment
-	cell_push := func(c *Cell) {
+	cell_push := func(c *cell) {
 		u, err := CreateURL(domain, c.subdom, c.path, c.proto, c.crawl_time)
 		if err != nil {
 			log4go.Error("CreateURL: " + err.Error())
@@ -219,8 +251,8 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	//
 	var start = true
 	var finish = true
-	var current Cell
-	var previous Cell
+	var current cell
+	var previous cell
 	iter := d.db.Query(`SELECT subdom, path, proto, time, getnow
 						FROM links WHERE dom = ?`, domain).Iter()
 	for iter.Scan(&current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
@@ -233,7 +265,7 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		// come out so that the crawl_time increases as you iterate. So in order to
 		// get the most recent link, simply take the last link in a series that shares
 		// dom, subdom, path, and protocol
-		if !cell_equal(&current, &previous) {
+		if !current.equivalent(&previous) {
 			cell_push(&previous)
 		}
 
@@ -319,36 +351,4 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 	log4go.Info("Generated segment for %v (%v links)", domain, len(links))
 
 	return nil
-}
-
-//
-// PriorityUrl is a heap of URLs, where the next element Pop'ed off
-// the list points to the oldest (as measured by LastCrawled) element
-// in the list. This class is designed to be used with the container/heap
-//
-//
-type PriorityUrl []*URL
-
-func (pq PriorityUrl) Len() int {
-	return len(pq)
-}
-
-func (pq PriorityUrl) Less(i, j int) bool {
-	return pq[i].LastCrawled.Before(pq[j].LastCrawled)
-}
-
-func (pq PriorityUrl) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
-}
-
-func (pq *PriorityUrl) Push(x interface{}) {
-	*pq = append(*pq, x.(*URL))
-}
-
-func (pq *PriorityUrl) Pop() interface{} {
-	old := *pq
-	n := len(old)
-	x := old[n-1]
-	*pq = old[0 : n-1]
-	return x
 }
