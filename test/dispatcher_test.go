@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	// "code.google.com/p/log4go"
 	"github.com/gocql/gocql"
 	"github.com/iParadigms/walker"
 )
