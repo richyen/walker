@@ -1,12 +1,13 @@
 package walker
 
 import (
+	"container/heap"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
 	"code.google.com/p/log4go"
-
 	"github.com/gocql/gocql"
 )
 
@@ -64,9 +65,7 @@ func (d *CassandraDispatcher) StartDispatcher() error {
 	d.quit = make(chan struct{})
 	d.domains = make(chan string)
 
-	//TODO: add Concurrency to config
-	concurrency := 1
-	for i := 0; i < concurrency; i++ {
+	for i := 0; i < Config.Dispatcher.NumConcurrentDomains; i++ {
 		d.finishWG.Add(1)
 		go func() {
 			d.generateRoutine()
@@ -139,64 +138,200 @@ func (d *CassandraDispatcher) generateRoutine() {
 	log4go.Debug("Finishing generateRoutine")
 }
 
+//
+// Some mathy type functions used in generateSegment
+//
+func imin(l int, r int) int {
+	if l < r {
+		return l
+	} else {
+		return r
+	}
+}
+
+func round(f float64) int {
+	abs := math.Abs(f)
+	sign := f / abs
+	floor := math.Floor(abs)
+	if abs-floor >= 0.5 {
+		return int(sign * (floor + 1))
+	} else {
+		return int(sign * floor)
+	}
+}
+
+//
+// Cell captures all the information for a link in the generateSegments method.
+// Every cell generated in that method shares the same domain (hence we don't
+// store the domain in the struct).
+//
+type cell struct {
+	subdom, path, proto string
+	crawl_time          time.Time
+	getnow              bool
+}
+
+// 2 cells are equivalent if their full link renders to the same string.
+func (c *cell) equivalent(other *cell) bool {
+	return c.path == other.path &&
+		c.subdom == other.subdom &&
+		c.proto == other.proto
+}
+
+//
+// PriorityUrl is a heap of URLs, where the next element Pop'ed off the list
+// points to the oldest (as measured by LastCrawled) element in the list. This
+// class is designed to be used with the container/heap package. This type is
+// currently only used in generateSegments
+//
+type PriorityUrl []*URL
+
+func (pq PriorityUrl) Len() int {
+	return len(pq)
+}
+
+func (pq PriorityUrl) Less(i, j int) bool {
+	return pq[i].LastCrawled.Before(pq[j].LastCrawled)
+}
+
+func (pq PriorityUrl) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+}
+
+func (pq *PriorityUrl) Push(x interface{}) {
+	*pq = append(*pq, x.(*URL))
+}
+
+func (pq *PriorityUrl) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	x := old[n-1]
+	*pq = old[0 : n-1]
+	return x
+}
+
 // generateSegment reads links in for this domain, generates a segment for it,
 // and inserts the domain into domains_to_crawl (assuming a segment is ready to
 // go)
-//
-// This implementation is dumb, we're just scheduling the first 500 links we
-// haven't crawled yet. We never recrawl.
 func (d *CassandraDispatcher) generateSegment(domain string) error {
 	log4go.Info("Generating a crawl segment for %v", domain)
-	iter := d.db.Query(`SELECT dom, subdom, path, proto, time
-						FROM links WHERE dom = ?
-						ORDER BY subdom, path, proto, time`, domain).Iter()
-	var linkdomain, subdomain, path, protocol string
-	var crawl_time time.Time
-	links := make(map[string]*URL)
-	for iter.Scan(&linkdomain, &subdomain, &path, &protocol, &crawl_time) {
-		u, err := CreateURL(linkdomain, subdomain, path, protocol, crawl_time)
+
+	//
+	// Three lists to hold the 3 link types
+	//
+	var getNowLinks []*URL       // links marked getnow
+	var uncrawledLinks []*URL    // links that haven't been crawled
+	var crawledLinks PriorityUrl // already crawled links, oldest links out first
+	heap.Init(&crawledLinks)
+
+	// cell push will push the argument cell onto one of the three link-lists.
+	// logs failure if CreateURL fails.
+	var limit = Config.Dispatcher.MaxLinksPerSegment
+	cell_push := func(c *cell) {
+		u, err := CreateURL(domain, c.subdom, c.path, c.proto, c.crawl_time)
 		if err != nil {
-			log4go.Error(err.Error())
-			continue
+			log4go.Error("CreateURL: " + err.Error())
+			return
 		}
 
-		if crawl_time.Equal(NotYetCrawled) {
-			if len(links) >= 500 {
-				// Stop here because we've moved on to a new link
-				log4go.Fine("Hit 500 links, not adding any more to the segment")
-				break
+		if c.getnow {
+			getNowLinks = append(getNowLinks, u)
+		} else if c.crawl_time.Equal(NotYetCrawled) {
+			if len(uncrawledLinks) < limit {
+				uncrawledLinks = append(uncrawledLinks, u)
 			}
-
-			log4go.Fine("Adding link to segment list: %#v", u)
-			links[u.String()] = u
 		} else {
-			// This means we've already crawled the link, so leave it out
-			// Because we order by crawl_time we won't hit the link again
-			// later with crawl_time == NotYetCrawled
-
-			log4go.Fine("Link already crawled, removing from segment list: %#v", u)
-			delete(links, u.String())
+			heap.Push(&crawledLinks, u)
 		}
+		return
+	}
+
+	//
+	// Do the scan, and populate the 3 lists
+	//
+	var start = true
+	var finish = true
+	var current cell
+	var previous cell
+	iter := d.db.Query(`SELECT subdom, path, proto, time, getnow
+						FROM links WHERE dom = ?`, domain).Iter()
+	for iter.Scan(&current.subdom, &current.path, &current.proto, &current.crawl_time, &current.getnow) {
+		if start {
+			previous = current
+			start = false
+		}
+
+		// IMPL NOTE: So the trick here is that, within a given domain, the entries
+		// come out so that the crawl_time increases as you iterate. So in order to
+		// get the most recent link, simply take the last link in a series that shares
+		// dom, subdom, path, and protocol
+		if !current.equivalent(&previous) {
+			cell_push(&previous)
+		}
+
+		previous = current
+
+		if len(getNowLinks) >= limit {
+			finish = false
+			break
+		}
+	}
+	if finish {
+		cell_push(&previous)
 	}
 	if err := iter.Close(); err != nil {
 		return fmt.Errorf("error selecting links for %v: %v", domain, err)
 	}
 
+	//
+	// Merge the 3 link types
+	//
+	var links []*URL
+	links = append(links, getNowLinks...)
+
+	numRemain := limit - len(links)
+	if numRemain > 0 {
+		refreshDecimal := Config.Dispatcher.RefreshPercentage / 100.0
+		idealCrawled := round(refreshDecimal * float64(numRemain))
+		idealUncrawled := numRemain - idealCrawled
+
+		for i := 0; i < idealUncrawled && len(uncrawledLinks) > 0 && len(links) < limit; i++ {
+			links = append(links, uncrawledLinks[0])
+			uncrawledLinks = uncrawledLinks[1:]
+		}
+
+		for i := 0; i < idealCrawled && crawledLinks.Len() > 0 && len(links) < limit; i++ {
+			links = append(links, heap.Pop(&crawledLinks).(*URL))
+		}
+
+		for len(uncrawledLinks) > 0 && len(links) < limit {
+			links = append(links, uncrawledLinks[0])
+			uncrawledLinks = uncrawledLinks[1:]
+		}
+
+		for crawledLinks.Len() > 0 && len(links) < limit {
+			links = append(links, heap.Pop(&crawledLinks).(*URL))
+		}
+	}
+
+	//
+	// Got any links
+	//
 	if len(links) == 0 {
 		log4go.Info("No links to dispatch for %v", domain)
 		return nil
 	}
 
+	//
+	// Insert into segments
+	//
 	for _, u := range links {
+		log4go.Debug("Inserting link in segment: %v", u.String())
 		dom, subdom, err := u.TLDPlusOneAndSubdomain()
 		if err != nil {
-			// Since the link is already in our system this should not happen;
-			// consider doing something else about it
-			log4go.Debug("Failed to get domain/subdomain from %v not storing: %v", u, err)
-			continue
+			log4go.Error("generateSegment not inserting %v: %v", u, err)
+			return err
 		}
-
-		log4go.Debug("Inserting link in segment: %v", u)
 		err = d.db.Query(`INSERT INTO segments
 			(dom, subdom, path, proto, time)
 			VALUES (?, ?, ?, ?, ?)`,
@@ -205,27 +340,15 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 			log4go.Error("Failed to insert link (%v), error: %v", u, err)
 		}
 	}
+
+	//
+	// Update dispatched flag
+	//
 	err := d.db.Query(`UPDATE domain_info SET dispatched = true WHERE dom = ?`, domain).Exec()
 	if err != nil {
 		return fmt.Errorf("error inserting %v to domains_to_crawl: %v", domain, err)
 	}
 	log4go.Info("Generated segment for %v (%v links)", domain, len(links))
 
-	// Batch insert -- may be faster but hard to figured out what happened on
-	// errors
-	//
-	//batch := d.db.NewBatch(gocql.UnloggedBatch)
-	//batch.Query(`INSERT INTO domains_to_crawl (domain, priority, crawler_token)
-	//				VALUES (?, ?, 00000000-0000-0000-0000-000000000000)`, domain, 0)
-	//for u, _ := range links {
-	//	log4go.Debug("Adding link to segment batch insert: %v", u)
-	//	batch.Query(`INSERT INTO segments (domain, subdom, path, proto, time)
-	//						VALUES (?, ?, ?, ?, ?)`,
-	//		u.Host, "", u.Path, u.Scheme, NotYetCrawled)
-	//}
-	//log4go.Info("Inserting %v links in segment for %v", batch.Size()-1, domain)
-	//if err := d.db.ExecuteBatch(batch); err != nil {
-	//	return fmt.Errorf("error inserting links for segment %v: %v", domain, err)
-	//}
 	return nil
 }

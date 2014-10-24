@@ -47,6 +47,12 @@ type WalkerConfig struct {
 	NumSimultaneousFetchers int  `yaml:"num_simultaneous_fetchers"`
 	BlacklistPrivateIPs     bool `yaml:"blacklist_private_ips"`
 
+	Dispatcher struct {
+		MaxLinksPerSegment   int     `yaml:"num_links_per_segment"`
+		RefreshPercentage    float64 `yaml:"refresh_percentage"`
+		NumConcurrentDomains int     `yaml:"num_concurrent_domains"`
+	} `yaml:"dispatcher"`
+
 	// TODO: consider these config items
 	// allowed schemes (file://, https://, etc.)
 	// allowed return content types (or file extensions)
@@ -105,6 +111,10 @@ func SetDefaultConfig() {
 	Config.NumSimultaneousFetchers = 10
 	Config.BlacklistPrivateIPs = true
 
+	Config.Dispatcher.MaxLinksPerSegment = 500
+	Config.Dispatcher.RefreshPercentage = 25
+	Config.Dispatcher.NumConcurrentDomains = 1
+
 	Config.Cassandra.Hosts = []string{"localhost"}
 	Config.Cassandra.Keyspace = "walker"
 	Config.Cassandra.ReplicationFactor = 3
@@ -121,6 +131,33 @@ func ReadConfigFile(path string) error {
 	return readConfig()
 }
 
+func assertConfigInvariants() error {
+	var errs []string
+	dis := &Config.Dispatcher
+	if dis.RefreshPercentage < 0.0 || dis.RefreshPercentage > 100.0 {
+		errs = append(errs, "Dispatcher.RefreshPercentage must be a floating point number b/w 0 and 100")
+	}
+	if dis.MaxLinksPerSegment < 1 {
+		errs = append(errs, "Dispatcher.MaxLinksPerSegment must be greater than 0")
+	}
+	if dis.NumConcurrentDomains < 1 {
+		errs = append(errs, "Dispatcher.NumConcurrentDomains must be greater than 0")
+	}
+
+	if len(errs) > 0 {
+		em := ""
+		for _, err := range errs {
+			log4go.Error("Config Error: %v", err)
+			em += "\t"
+			em += err
+			em += "\n"
+		}
+		return fmt.Errorf("Config Error:\n%v\n", em)
+	}
+
+	return nil
+}
+
 func readConfig() error {
 	SetDefaultConfig()
 
@@ -133,5 +170,7 @@ func readConfig() error {
 		return fmt.Errorf("Failed to unmarshal yaml from config file (%v): %v", ConfigName, err)
 	}
 	log4go.Info("Loaded config file %v", ConfigName)
-	return nil
+
+	err = assertConfigInvariants()
+	return err
 }

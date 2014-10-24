@@ -53,7 +53,7 @@ func TestCommandsReadConfig(t *testing.T) {
 		}
 
 		go func() {
-			time.Sleep(5 * time.Millisecond)
+			time.Sleep(100 * time.Millisecond)
 			syscall.Kill(os.Getpid(), syscall.SIGINT)
 		}()
 		cmd.Execute()

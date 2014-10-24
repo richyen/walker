@@ -428,6 +428,9 @@ CREATE TABLE {{.Keyspace}}.links (
 	-- in this field
 	redto_url text,
 
+	-- getnow is true if this link should be queued ASAP to be crawled
+	getnow boolean,
+
 	---- Items yet to be added to walker
 
 	-- fingerprint, a hash of the page contents for identity comparison

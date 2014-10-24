@@ -46,6 +46,19 @@
 # If true, walker will not crawl domains that resolve in private IP ranges
 #blacklist_private_ips: true
 
+## Dispatcher configuration
+#dispatcher:
+#    ## maximum number of links added to segments table per dispatch (must be >0)
+#    num_links_per_segment: 500
+#   
+#    ## refresh_percentage is the percentage of links added per dispatch that have already been crawled.
+#    ## So refresh_percentage = 25 means that 25% of the links added to segments on the next dispatch
+#    ## will be refreshed (i.e. already crawled) links. This value must be >= 0 and <= 100.
+#    refresh_percentage: 25
+#
+#    ## How many concurrent dispatching threads will be run at once (must be >0)
+#    num_concurrent_domains: 1
+
 # Cassandra configuration for the datastore.
 # Generally these are used to create a gocql.ClusterConfig object
 # (https://godoc.org/github.com/gocql/gocql#ClusterConfig).

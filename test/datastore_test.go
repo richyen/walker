@@ -7,47 +7,12 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
-	"sync"
-
 	"testing"
 	"time"
 
 	"github.com/gocql/gocql"
 	"github.com/iParadigms/walker"
 )
-
-var initdb sync.Once
-
-// getDB ensures a walker database is set up and empty, returning a db session
-func getDB(t *testing.T) *gocql.Session {
-	initdb.Do(func() {
-		err := walker.CreateCassandraSchema()
-		if err != nil {
-			t.Fatalf(err.Error())
-		}
-	})
-
-	if walker.Config.Cassandra.Keyspace != "walker_test" {
-		t.Fatal("Running tests requires using the walker_test keyspace")
-		return nil
-	}
-	config := walker.GetCassandraConfig()
-	db, err := config.CreateSession()
-	if err != nil {
-		t.Fatalf("Could not connect to local cassandra db: %v", err)
-		return nil
-	}
-
-	tables := []string{"links", "segments", "domain_info"}
-	for _, table := range tables {
-		err := db.Query(fmt.Sprintf(`TRUNCATE %v`, table)).Exec()
-		if err != nil {
-			t.Fatalf("Failed to truncate table %v: %v", table, err)
-		}
-	}
-
-	return db
-}
 
 // getDS is a convenience function for getting a CassandraDatastore and failing
 // if we couldn't
