@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -504,4 +505,67 @@ func TestAddingRedirects(t *testing.T) {
 			t.Errorf("Redirect mismatch: got %q, expected %q", redto, exp.redto)
 		}
 	}
+}
+
+func TestClaimHostConcurrency(t *testing.T) {
+	numInstances := 10
+	numDomain := 1000
+	db := getDB(t)
+	insertDomainInfo := `INSERT INTO domain_info (dom, claim_tok, dispatched) VALUES (?, 00000000-0000-0000-0000-000000000000, true)`
+	for i := 0; i < numDomain; i++ {
+		err := db.Query(insertDomainInfo, fmt.Sprintf("d%d.com", i)).Exec()
+		if err != nil {
+			t.Fatalf("Failed to insert domain d%d.com", i)
+		}
+	}
+	db.Close()
+
+	var wg sync.WaitGroup
+	var hosts [][]int = make([][]int, numInstances)
+	for i := 0; i < numInstances; i++ {
+		go func(index int) {
+			wg.Add(1)
+			ds := getDS(t)
+			var h []int
+			for {
+				host := ds.ClaimNewHost()
+				if host == "" {
+					hosts[index] = h
+					wg.Done()
+					return
+				}
+				var hin int
+				n, err := fmt.Sscanf(host, "d%d.com", &hin)
+				if n != 1 || err != nil {
+					panic(err)
+				}
+				h = append(h, hin)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	allDomains := map[int]bool{}
+
+	for _, hl := range hosts {
+		for _, hin := range hl {
+			if allDomains[hin] {
+				t.Fatalf("Double counted domain d%d.com", hin)
+			}
+			allDomains[hin] = true
+		}
+	}
+
+	for _, hl := range hosts {
+		for _, hin := range hl {
+			fmt.Printf(">> %d\n", hin)
+		}
+	}
+
+	for i := 0; i < numDomain; i++ {
+		if !allDomains[i] {
+			t.Fatalf("Failed to claim domain d%d.com", i)
+		}
+	}
+
 }

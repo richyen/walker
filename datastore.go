@@ -112,6 +112,7 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
 
+	casMap := map[string]interface{}{}
 	if len(ds.domains) == 0 {
 		start := time.Now()
 		var domain string
@@ -121,16 +122,27 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 									AND dispatched = true
 									LIMIT 50 ALLOW FILTERING`).Iter()
 		for domain_iter.Scan(&domain) {
-			//TODO: use lightweight transaction to allow more crawlers
-			//TODO: use a per-crawler uuid
-			log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
-			start = time.Now()
-			err := ds.db.Query(`UPDATE domain_info SET claim_tok = ?, claim_time = ?
-								WHERE dom = ?`,
-				ds.crawlerUuid, time.Now(), domain).Exec()
+			log4go.Error("PETE: Here i am %q", domain)
+
+			// The query below is a compare-and-set type query. It will only update the claim_tok, claim_time
+			// if the claim_tok remains 00000000-0000-0000-0000-000000000000 at the time of update.
+			qtext := `UPDATE domain_info 
+						SET 
+							claim_tok = ?, 
+							claim_time = ?
+						WHERE 
+							dom = ?
+						IF 
+							dispatched = true AND
+							claim_tok = 00000000-0000-0000-0000-000000000000`
+			applied, err := ds.db.Query(qtext, ds.crawlerUuid, time.Now(), domain).MapScanCAS(casMap)
 			if err != nil {
 				log4go.Error("Failed to claim segment %v: %v", domain, err)
+			} else if !applied {
+				log4go.Debug("Domain %v was claimed by another crawler before resolution", domain)
 			} else {
+				log4go.Debug("ClaimNewHost selected new domain in %v", time.Since(start))
+				start = time.Now()
 				log4go.Debug("Claimed segment %v with token %v in %v", domain, ds.crawlerUuid, time.Since(start))
 				ds.domains = append(ds.domains, domain)
 			}
