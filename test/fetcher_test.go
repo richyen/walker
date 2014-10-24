@@ -233,6 +233,36 @@ func TestFetcherBlacklistsPrivateIPs(t *testing.T) {
 	ds.AssertNotCalled(t, "LinksForHost", "private.com")
 }
 
+func TestStillCrawlWhenDomainUnreachable(t *testing.T) {
+	orig := walker.Config.BlacklistPrivateIPs
+	defer func() { walker.Config.BlacklistPrivateIPs = orig }()
+	walker.Config.BlacklistPrivateIPs = true
+
+	ds := &MockDatastore{}
+	ds.On("ClaimNewHost").Return("a1234567890bcde.com").Once()
+	ds.On("LinksForHost", "a1234567890bcde.com").Return([]*walker.URL{
+		parse("http://a1234567890bcde.com/"),
+	})
+	ds.On("StoreURLFetchResults", mock.AnythingOfType("*walker.FetchResults")).Return()
+	ds.On("UnclaimHost", "a1234567890bcde.com").Return()
+	ds.On("ClaimNewHost").Return("")
+
+	h := &MockHandler{}
+
+	manager := &walker.FetchManager{
+		Datastore: ds,
+		Handler:   h,
+		Transport: GetFakeTransport(),
+	}
+
+	go manager.Start()
+	time.Sleep(time.Millisecond * 10)
+	manager.Stop()
+
+	ds.AssertExpectations(t)
+	h.AssertExpectations(t)
+}
+
 func TestFetcherCreatesTransport(t *testing.T) {
 	orig := walker.Config.BlacklistPrivateIPs
 	defer func() { walker.Config.BlacklistPrivateIPs = orig }()
