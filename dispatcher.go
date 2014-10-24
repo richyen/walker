@@ -194,9 +194,6 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 
 	// cell push will push the argument cell onto one of the three link-lists.
 	// logs failure if CreateURL fails.
-	// NOTE: one way to reduce memory footprint, which would be easy, is to
-	// limit uncrawledLinks and crawledLinks so that if they already had
-	// limit links, they stopped storing links.
 	var limit = Config.Dispatcher.MaxLinksPerSegment
 	cell_push := func(c *Cell) {
 		u, err := CreateURL(domain, c.subdom, c.path, c.proto, c.crawl_time)
@@ -208,7 +205,9 @@ func (d *CassandraDispatcher) generateSegment(domain string) error {
 		if c.getnow {
 			getNowLinks = append(getNowLinks, u)
 		} else if c.crawl_time.Equal(NotYetCrawled) {
-			uncrawledLinks = append(uncrawledLinks, u)
+			if len(uncrawledLinks) < limit {
+				uncrawledLinks = append(uncrawledLinks, u)
+			}
 		} else {
 			heap.Push(&crawledLinks, u)
 		}
