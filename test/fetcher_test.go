@@ -174,7 +174,7 @@ func TestBasicFetchManagerRun(t *testing.T) {
 	expectedMimesFound := map[string]string{
 		"http://accept.com/donthandle":       "foo/bar",
 		"http://accept.com/accept_text.txt":  "text/plain",
-		"http://accept.com/accept_html.html": "text/html; charset=ISO-8859-4",
+		"http://accept.com/accept_html.html": "text/html",
 	}
 
 	for _, call := range ds.Calls {

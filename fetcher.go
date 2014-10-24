@@ -11,6 +11,7 @@ import (
 
 	"github.com/temoto/robotstxt.go"
 
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -339,7 +340,12 @@ func (f *fetcher) start() {
 
 			ctype, ctypeOk := fr.Response.Header["Content-Type"]
 			if ctypeOk && len(ctype) > 0 {
-				fr.MimeType = ctype[0]
+				media_type, _, err := mime.ParseMediaType(ctype[0])
+				if err != nil {
+					log4go.Error("Failed to parse mime header %q: %v", ctype[0], err)
+				} else {
+					fr.MimeType = media_type
+				}
 			}
 
 			canSearch := isHTML(fr.Response)
