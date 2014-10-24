@@ -456,6 +456,10 @@ func (f *fetcher) fetch(u *URL) (*http.Response, []*URL, error) {
 //
 // One example of blacklisting is detection of IP addresses that resolve to
 // localhost or other bad IP ranges.
+//
+// TODO: since different subdomains my resolve to different IPs, find a way to
+// check this for every HTTP fetch without extraneous connections or fetching
+// data we aren't going to care about
 func (f *fetcher) checkForBlacklisting(host string) bool {
 	t, ok := f.fm.Transport.(*http.Transport)
 	if !ok {
@@ -466,16 +470,14 @@ func (f *fetcher) checkForBlacklisting(host string) bool {
 
 	conn, err := t.Dial("tcp", net.JoinHostPort(host, "80"))
 	if err != nil {
-		//TODO: blacklist this domain in the datastore as couldn't connect;
-		//maybe try a few times
-		log4go.Debug("Could not connect to host (%v, %v), blacklisting", host, err)
-		return true
+		// Don't simply blacklist because we couldn't connect; the TLD+1 may
+		// not work but subdomains may work
+		log4go.Debug("Could not connect to host (%v, %v) to check blacklisting", host, err)
+		return false
 	}
 	defer conn.Close()
 
 	if Config.BlacklistPrivateIPs && isPrivateAddr(conn.RemoteAddr().String()) {
-		//TODO: mark this domain as blacklisted  in the datastore for resolving
-		//to a private IP
 		log4go.Debug("Host (%v) resolved to private IP address, blacklisting", host)
 		return true
 	}
