@@ -159,8 +159,6 @@ func TestBasicFetchManagerRun(t *testing.T) {
 		case "http://accept.com/accept_text.txt":
 			recvTextPlain = true
 		case "http://linktests.com/links/test.html":
-		case "http://accept.com/donthandle":
-			t.Fatalf("YES")
 		default:
 			t.Errorf("Got a Handler.HandleResponse call we didn't expect: %v", fr)
 		}
