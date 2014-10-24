@@ -131,7 +131,7 @@ func ReadConfigFile(path string) error {
 	return readConfig()
 }
 
-func assertConfigInvarients() error {
+func assertConfigInvariants() error {
 	var errs []string
 	dis := &Config.Dispatcher
 	if dis.RefreshPercentage < 0.0 || dis.RefreshPercentage > 100.0 {
@@ -171,6 +171,6 @@ func readConfig() error {
 	}
 	log4go.Info("Loaded config file %v", ConfigName)
 
-	err = assertConfigInvarients()
+	err = assertConfigInvariants()
 	return err
 }
