@@ -210,7 +210,7 @@ func (fm *FetchManager) Start() {
 		fm.Transport = &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			Dial: (&net.Dialer{
-				Timeout:   30 * time.Second,
+				Timeout:   Config.HttpTimeoutSeconds * time.Second,
 				KeepAlive: 30 * time.Second,
 			}).Dial,
 			TLSHandshakeTimeout: 10 * time.Second,
@@ -274,6 +274,7 @@ func newFetcher(fm *FetchManager) *fetcher {
 	f.fm = fm
 	f.httpclient = &http.Client{
 		Transport: fm.Transport,
+		Timeout:   Config.HttpTimeoutSeconds * time.Second,
 	}
 	f.quit = make(chan struct{})
 	f.done = make(chan struct{})

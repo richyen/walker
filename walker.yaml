@@ -46,6 +46,10 @@
 # If true, walker will not crawl domains that resolve in private IP ranges
 #blacklist_private_ips: true
 
+# Number of seconds the the complete http-Get is allowed to run before being
+# cancled. Zero indicates no timeout.
+#http_timeout_seconds: 30
+
 ## Dispatcher configuration
 #dispatcher:
 #    ## maximum number of links added to segments table per dispatch (must be >0)

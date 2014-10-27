@@ -46,6 +46,7 @@ type WalkerConfig struct {
 	MaxLinksPerPage         int  `yaml:"max_links_per_page"`
 	NumSimultaneousFetchers int  `yaml:"num_simultaneous_fetchers"`
 	BlacklistPrivateIPs     bool `yaml:"blacklist_private_ips"`
+	HttpTimeoutSeconds      int  `yaml:"http_timeout_seconds"`
 
 	Dispatcher struct {
 		MaxLinksPerSegment   int     `yaml:"num_links_per_segment"`
@@ -110,6 +111,7 @@ func SetDefaultConfig() {
 	Config.MaxLinksPerPage = 1000
 	Config.NumSimultaneousFetchers = 10
 	Config.BlacklistPrivateIPs = true
+	Config.HttpTimeoutSeconds = 30
 
 	Config.Dispatcher.MaxLinksPerSegment = 500
 	Config.Dispatcher.RefreshPercentage = 25
