@@ -129,10 +129,11 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 		// Under current expected use, it seems like we wouldn't need to retry
 		// more than 5-ish times (hence the retryLimit setting).
 		retryLimit := 5
-		limit := 50
-		trumpedClaim := 0
 	RETRY:
 		for i := 0; i < retryLimit; i++ {
+			limit := 50
+			trumpedClaim := 0
+
 			//TODO: when using priorities: `WHERE priority = ?`
 			domain_iter := ds.db.Query(
 				fmt.Sprintf(`SELECT dom FROM domain_info
@@ -159,9 +160,9 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 					trumpedClaim++
 					log4go.Debug("Domain %v was claimed by another crawler before resolution", domain)
 				} else {
+					ds.domains = append(ds.domains, domain)
 					log4go.Debug("Claimed segment %v with token %v in %v", domain, ds.crawlerUuid, time.Since(start))
 					start = time.Now()
-					ds.domains = append(ds.domains, domain)
 				}
 			}
 
