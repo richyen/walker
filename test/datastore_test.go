@@ -521,13 +521,16 @@ func TestClaimHostConcurrency(t *testing.T) {
 	}
 	db.Close()
 
-	var wg sync.WaitGroup
+	var startWg, finishWg sync.WaitGroup
 	var hosts [][]int = make([][]int, numInstances)
 	for i := 0; i < numInstances; i++ {
-		wg.Add(1)
+		finishWg.Add(1)
+		startWg.Add(1)
 		go func(index int) {
 			ds := getDS(t)
 			var h []int
+			startWg.Done()
+			startWg.Wait()
 			for {
 				host := ds.ClaimNewHost()
 				if host == "" {
@@ -542,10 +545,10 @@ func TestClaimHostConcurrency(t *testing.T) {
 			}
 			hosts[index] = h
 			ds.Close()
-			wg.Done()
+			finishWg.Done()
 		}(i)
 	}
-	wg.Wait()
+	finishWg.Wait()
 
 	allDomains := map[int]bool{}
 
