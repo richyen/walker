@@ -122,28 +122,12 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 	if len(ds.domains) == 0 {
 		start := time.Now()
 		var domain string
-
-		// The trumpedClaim counter handles the case when the code attempts to
-		// grab limit domains, but all limit of those domains are claimed by
-		// another datastore before any can be claimed by this datastore.
-		// Under current expected use, it seems like we wouldn't need to retry
-		// more than 5-ish times (hence the retryLimit setting).
-		retryLimit := 5
-	RETRY:
-		for i := 0; i < retryLimit; i++ {
-			limit := 50
-			trumpedClaim := 0
-
-			//TODO: when using priorities: `WHERE priority = ?`
-			domain_iter := ds.db.Query(
-				fmt.Sprintf(`SELECT dom FROM domain_info
+		limit := 50
+		loopQuery := fmt.Sprintf(`SELECT dom FROM domain_info
 									WHERE claim_tok = 00000000-0000-0000-0000-000000000000
-									AND dispatched = true LIMIT %d ALLOW FILTERING`, limit)).Iter()
+									AND dispatched = true LIMIT %d ALLOW FILTERING`, limit)
 
-			for domain_iter.Scan(&domain) {
-				// The query below is a compare-and-set type query. It will only update the claim_tok, claim_time
-				// if the claim_tok remains 00000000-0000-0000-0000-000000000000 at the time of update.
-				qtext := `UPDATE domain_info 
+		casQuery := `UPDATE domain_info 
 						SET 
 							claim_tok = ?, 
 							claim_time = ?
@@ -152,8 +136,21 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 						IF 
 							dispatched = true AND
 							claim_tok = 00000000-0000-0000-0000-000000000000`
+
+		// The trumpedClaim counter handles the case when the code attempts to
+		// grab limit domains, but all limit of those domains are claimed by
+		// another datastore before any can be claimed by this datastore.
+		// Under current expected use, it seems like we wouldn't need to retry
+		// more than 5-ish times (hence the retryLimit setting).
+		retryLimit := 5
+		for i := 0; i < retryLimit; i++ {
+			trumpedClaim := 0
+			domain_iter := ds.db.Query(loopQuery).Iter()
+			for domain_iter.Scan(&domain) {
+				// The query below is a compare-and-set type query. It will only update the claim_tok, claim_time
+				// if the claim_tok remains 00000000-0000-0000-0000-000000000000 at the time of update.
 				casMap := map[string]interface{}{}
-				applied, err := ds.db.Query(qtext, ds.crawlerUuid, time.Now(), domain).MapScanCAS(casMap)
+				applied, err := ds.db.Query(casQuery, ds.crawlerUuid, time.Now(), domain).MapScanCAS(casMap)
 				if err != nil {
 					log4go.Error("Failed to claim segment %v: %v", domain, err)
 				} else if !applied {
@@ -165,17 +162,14 @@ func (ds *CassandraDatastore) ClaimNewHost() string {
 					start = time.Now()
 				}
 			}
-
 			err := domain_iter.Close()
 			if err != nil {
 				log4go.Error("Domain iteration query failed: %v", err)
 			}
-
 			if trumpedClaim < limit {
-				break RETRY
+				break
 			}
 		}
-
 	}
 
 	if len(ds.domains) == 0 {
