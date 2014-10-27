@@ -510,6 +510,7 @@ func TestAddingRedirects(t *testing.T) {
 func TestClaimHostConcurrency(t *testing.T) {
 	numInstances := 10
 	numDomain := 1000
+
 	db := getDB(t)
 	insertDomainInfo := `INSERT INTO domain_info (dom, claim_tok, dispatched) VALUES (?, 00000000-0000-0000-0000-000000000000, true)`
 	for i := 0; i < numDomain; i++ {
@@ -523,16 +524,14 @@ func TestClaimHostConcurrency(t *testing.T) {
 	var wg sync.WaitGroup
 	var hosts [][]int = make([][]int, numInstances)
 	for i := 0; i < numInstances; i++ {
+		wg.Add(1)
 		go func(index int) {
-			wg.Add(1)
 			ds := getDS(t)
 			var h []int
 			for {
 				host := ds.ClaimNewHost()
 				if host == "" {
-					hosts[index] = h
-					wg.Done()
-					return
+					break
 				}
 				var hin int
 				n, err := fmt.Sscanf(host, "d%d.com", &hin)
@@ -541,6 +540,9 @@ func TestClaimHostConcurrency(t *testing.T) {
 				}
 				h = append(h, hin)
 			}
+			hosts[index] = h
+			ds.Close()
+			wg.Done()
 		}(i)
 	}
 	wg.Wait()
@@ -553,12 +555,6 @@ func TestClaimHostConcurrency(t *testing.T) {
 				t.Fatalf("Double counted domain d%d.com", hin)
 			}
 			allDomains[hin] = true
-		}
-	}
-
-	for _, hl := range hosts {
-		for _, hin := range hl {
-			fmt.Printf(">> %d\n", hin)
 		}
 	}
 
