@@ -1,6 +1,7 @@
 # Contributing
 
 We welcome contributions in the form of pull requests. They should:
+- Have informative summaries and comments on git commits
 - Have passing unit tests
 - Be well documented and formatted with `go fmt`
 - Match the general coding style of the project
