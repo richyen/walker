@@ -522,26 +522,21 @@ func TestClaimHostConcurrency(t *testing.T) {
 	db.Close()
 
 	var startWg, finishWg sync.WaitGroup
-	var hosts [][]int = make([][]int, numInstances)
+	var hosts [][]string = make([][]string, numInstances)
 	for i := 0; i < numInstances; i++ {
 		finishWg.Add(1)
 		startWg.Add(1)
 		go func(index int) {
 			ds := getDS(t)
-			var h []int
 			startWg.Done()
 			startWg.Wait()
+			var h []string
 			for {
 				host := ds.ClaimNewHost()
 				if host == "" {
 					break
 				}
-				var hin int
-				n, err := fmt.Sscanf(host, "d%d.com", &hin)
-				if n != 1 || err != nil {
-					panic(err)
-				}
-				h = append(h, hin)
+				h = append(h, host)
 			}
 			hosts[index] = h
 			ds.Close()
@@ -550,20 +545,19 @@ func TestClaimHostConcurrency(t *testing.T) {
 	}
 	finishWg.Wait()
 
-	allDomains := map[int]bool{}
-
-	for _, hl := range hosts {
-		for _, hin := range hl {
-			if allDomains[hin] {
-				t.Fatalf("Double counted domain d%d.com", hin)
+	allDomains := map[string]bool{}
+	for _, hlist := range hosts {
+		for _, host := range hlist {
+			if allDomains[host] {
+				t.Fatalf("Double counted domain %s", host)
 			}
-			allDomains[hin] = true
+			allDomains[host] = true
 		}
 	}
-
 	for i := 0; i < numDomain; i++ {
-		if !allDomains[i] {
-			t.Fatalf("Failed to claim domain d%d.com", i)
+		host := fmt.Sprintf("d%d.com", i)
+		if !allDomains[host] {
+			t.Fatalf("Failed to claim domain %s", host)
 		}
 	}
 
