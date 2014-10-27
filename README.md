@@ -57,7 +57,7 @@ sudo yum install java-1.7.0-openjdk dsc20
 sudo service cassandra start # it can take a few minutes for this to actually start up
 ```
 
-In order to run walker and cassandra on your local machine, you may need to make the following changes to (cassandra.yaml)[http://www.datastax.com/documentation/cassandra/2.0/cassandra/configuration/configCassandra_yaml_r.html]:
+In order to run walker and cassandra on your local machine, you may need to make the following changes to [cassandra.yaml](http://www.datastax.com/documentation/cassandra/2.0/cassandra/configuration/configCassandra_yaml_r.html):
 - Change `listen_address` to empty
 - Change `rpc_address` to `0.0.0.0`
 - `sudo service cassandra restart`
@@ -105,7 +105,7 @@ go run main.go # Has the same CLI as the walker binary
 
 ## Advanced features and configuration
 
-See (walker.yaml)[walker.yaml] for extensive descriptions of the various configuration parameters available for walker. This file is the primary way of configuring your crawl. It is not required to be exist, but will be read if it is in the working directory of the walker process or configured with a command line parameter.
+See [walker.yaml](walker.yaml) for extensive descriptions of the various configuration parameters available for walker. This file is the primary way of configuring your crawl. It is not required to be exist, but will be read if it is in the working directory of the walker process or configured with a command line parameter.
 
 A small sampling of common configuration items:
 ```yaml
@@ -140,8 +140,8 @@ cassandra:
 
 TODO: add url of documentation site (walker.github.io?)
 
-Also see our (FAQ)[FAQ.md]
+Also see our [FAQ](FAQ.md)
 
 # Contributing
 
-See (contributing)[contributing.md] for information about development, logging, and running tests.
+See [contributing](contributing.md) for information about development, logging, and running tests.

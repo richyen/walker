@@ -23,7 +23,7 @@ The fetch manager tests, in order to test with URLs that do not have a port numb
 
 ### Tag: cassandra
 
-The datastore tests require a local Cassandra instance to be running. They automatically set up a `walker_test` keyspace for testing, so shouldn't interfere with existing data (nonetheless running tests with your production Cassandra instance is not a good idea). See (the README)[README.md] for simple setup instructions.
+The datastore tests require a local Cassandra instance to be running. They automatically set up a `walker_test` keyspace for testing, so shouldn't interfere with existing data (nonetheless running tests with your production Cassandra instance is not a good idea). See [the README](README.md) for simple setup instructions.
 
 # Logging
 
